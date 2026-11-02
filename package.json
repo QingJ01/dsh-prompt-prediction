@@ -1,14 +1,16 @@
 {
   "name": "dsh-prompt-prediction",
   "version": "0.1.0",
-  "description": "Predicts the user's next message after an agent reply and fills it into the empty composer on Tab",
+  "description": "Unofficial DeepSeek Harness plugin for next-prompt ghost text; Tab or ArrowRight fills an editable draft without sending it.",
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "composer",
     "prediction",
-    "ghost-text"
+    "ghost-text",
+    "prompt-prediction",
+    "autocomplete"
   ],
   "license": "MIT",
   "repository": {
@@ -25,7 +27,8 @@
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./prediction": "./lib/prediction.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib/index.js",
@@ -33,6 +36,9 @@
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
+    "docs/images/preview.png",
+    "locale/*.json",
     "LICENSE"
   ],
   "scripts": {
@@ -45,7 +51,11 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   },
@@ -54,6 +64,10 @@
     "dsh": ">=0.2.1-rc.5 <0.3.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.5"
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "3.18.5"
   }
 }

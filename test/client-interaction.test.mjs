@@ -430,6 +430,7 @@ async function mountOverlay({
 
   let slotComponent = null
   exportsObject.apply({
+    inject() {},
     slots: {
       inject: (_name, factory) => factory(),
       register: (_descriptor, component) => {

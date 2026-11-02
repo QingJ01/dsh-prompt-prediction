@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Prompt Prediction",
+    "description": "Predict your next message after an Agent reply and show it as ghost text in the empty composer. Tab or ArrowRight fills an editable draft; Escape dismisses it. Never sends automatically. Predictions make additional, potentially billable model requests."
+  }
+}
