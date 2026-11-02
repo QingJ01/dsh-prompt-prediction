@@ -1,26 +1,36 @@
 # DSH Prompt Prediction
 
-Predict your next message after an agent reply, display it as ghost text in the empty composer, and press **Tab** or **→** to turn it into an editable draft.
+**让下一句提示词先出现在输入框里，由你决定是否采用。**
 
-为 DeepSeek Harness 提供下一句提示词预测：一轮结束后，空输入框显示灰字建议，按 **Tab / →** 填入草稿，**不会自动发送**。
+DeepSeek Harness（DSH）的非官方插件：Agent 正常完成一轮回复后，预测你可能输入的下一句话，以灰字显示在空输入框中。按 **Tab / →** 填入可编辑草稿，**不会自动发送**。
 
-An unofficial DSH plugin inspired by Codex's next-prompt prediction interaction. No build step and no production dependencies beyond the DSH host.
+中文 · [English](README.en.md) · [安装](#安装) · [配置](#配置) · [排障](#常见问题) · [开发与测试](#开发与测试)
 
-[中文说明](#中文说明) · [English](#english-documentation)
+| 项目 | 说明 |
+| --- | --- |
+| 运行环境 | DSH 插件，不是独立聊天应用或浏览器扩展 |
+| 声明兼容范围 | DSH `>=0.2.1-rc.5 <0.3.0`；适配基于 `0.2.1-rc.5`，不表示范围内每个版本都已实测 |
+| Node.js | `>=24.0.0`；本地开发和测试需要 |
+| 构建与依赖 | 无构建步骤，无独立生产依赖；DSH 提供 Cordis、React 等宿主能力 |
+| 模型费用 | 预测会额外请求模型，可能计费 |
+| 本地日志 | 默认开启，可能记录预测及交互文本；可用 `auditLog: false` 关闭 |
+| 许可证 | [MIT](LICENSE) |
 
-## 效果预览 / Preview
+## 效果预览
 
 ![DSH 提示词预测：空输入框显示灰字，按 Tab 填入草稿](docs/images/preview.png)
 
-*基于插件实际前端渲染的交互演示，图中建议为示例文本。 / Rendered with the plugin frontend and an example suggestion.*
+*由插件前端渲染，建议内容为示例文本；这不是模型准确率或完整 DSH 端到端验收证明。*
 
 ## 中文说明
 
-这是一个非官方的 DeepSeek Harness 插件，参考 Codex 的下一句预测交互：**Agent 一轮回复结束后，预测你接下来可能输入的话，并以灰字显示在空输入框里。**
+交互参考 Codex 的下一句预测，但不是 Codex 或 DeepSeek 的官方插件。建议只是模型推测，采纳后仍应检查；插件不会替你发送消息或执行预测中的工具调用。
 
-### 安装
+<a id="install"></a>
 
-已在 DSH `0.2.1-rc.5` 上验证；开发和运行测试需要 Node.js 24 或更高版本。
+## 安装
+
+前提：已安装兼容的 DSH，终端可运行 `dsh`，目标 profile 中的会话已有可用模型路由。
 
 ```sh
 git clone https://github.com/QingJ01/dsh-prompt-prediction.git
@@ -28,25 +38,51 @@ cd dsh-prompt-prediction
 dsh plugin --profile desktop add "link:$(pwd)"
 ```
 
-如果你使用其他 profile，将 `desktop` 替换为对应名称。安装后刷新 DSH 窗口加载前端；如果 Host 插件没有自动加载，可重启 DSH。使用 link 安装时请保留此目录的位置。
+- 使用其他 profile 时，将 `desktop` 替换为对应名称。
+- 刷新已有 DSH 窗口以加载前端；Host 插件未自动加载时重启 DSH。
+- link 安装依赖此目录，请勿移动或删除；无需先运行 `npm install` 或构建。
 
-### 怎么用
+### 更新与移除
 
-1. 在会话中正常提问，等待 Agent 完成一轮回复。
-2. 输入框完全为空时，会显示一条灰字建议；输入框有草稿、附件、引用或排队消息时不会显示。
-3. 聚焦输入框，按 **Tab** 或 **→**，将建议填入可编辑草稿；你可以继续修改，再自行发送。
+在插件目录中、确认本地修改已保存后更新：
 
-**插件不会自动发送消息。** 输入文字、中文输入法组字、打开菜单、会话运行中或处于 Plan 模式时，灰字会隐藏。采纳操作支持撤销、重做。
+```sh
+git pull --ff-only
+```
 
-屏幕阅读器可获知建议全文与采纳键。按 **Esc** 可忽略当前建议，随后 **Tab** 恢复焦点导航；同一轮建议不会因轮询重新出现。状态请求超时会隐藏旧建议并自动重试。
+随后重启 DSH 并刷新窗口，使 Host 与前端使用同一版本。若快进更新失败，先处理本地分支差异，不要用强制重置覆盖自己的修改。
 
-与 Codex 的适配差异：**Enter 保留 DSH 原有的发送、排队和命令处理逻辑，不用于采纳灰字**；长建议单行省略显示，但采纳时会插入完整内容。
+```sh
+dsh plugin --profile desktop remove dsh-prompt-prediction
+```
 
-### 模型、费用与配置
+移除插件不会由本插件清理已有审计日志；如需删除记录，请自行处理下方说明的日志目录。
 
-默认沿用当前会话的模型和历史，额外发起一次预测请求，不会把预测写进 Agent 的会话历史。同一路由有机会复用提供商的前缀缓存，但**预测仍可能产生模型费用**，冷缓存或长会话的成本取决于你的提供商。也可以同时设置 `provider` 和 `model`，改用独立的预测模型及精简历史。
+<a id="interaction"></a>
 
-在 profile 的 `cordis.patch.yml` 中覆盖配置，例如：
+## 使用方式
+
+1. 正常提问，等待 Agent **正常完成**一轮回复；失败、中断、取消等状态不触发预测。
+2. 输入框完全为空且没有附件、引用或排队消息时，才可能显示灰字建议。
+3. 聚焦输入框，采纳或忽略建议；采纳后可修改，再自行发送。
+
+| 操作或状态 | 行为 |
+| --- | --- |
+| **Tab / →** | 填入可编辑草稿，支持撤销、重做，不发送 |
+| **Esc** | 忽略当前建议，随后 Tab 可移动焦点；轮询不恢复同一轮的同一条建议 |
+| **Enter** | 保留 DSH 原有发送、排队、命令处理逻辑，不用于采纳 |
+| 输入文字、IME 组字、打开菜单 | 隐藏建议，不干扰当前输入 |
+| 会话运行中、Plan 模式或输入框禁用 | 隐藏建议 |
+| 长建议 | 单行省略预览，采纳时填入完整建议 |
+| 删除草稿至空白 | 当前建议未被忽略且仍有效时，可以再次显示 |
+
+插件提供供辅助技术读取的建议全文与按键说明；这不等于已经完成各类屏幕阅读器实测。状态读取请求超过 **5 秒**会隐藏旧建议并退避重试；这与模型请求的 `timeoutMs` 是两个不同限制。
+
+<a id="configuration"></a>
+
+## 配置
+
+插件包会插入 ID 为 `prompt-prediction` 的配置行。在目标 profile 的 `cordis.patch.yml` 中覆盖该行，例如：
 
 ```yaml
 - id: prompt-prediction
@@ -57,82 +93,23 @@ dsh plugin --profile desktop add "link:$(pwd)"
     auditLog: false
 ```
 
-- `enabled: false`：关闭预测。
-- `maxSuggestionChars`：控制建议的最大长度。
-- `auditLog: false`：关闭本地审计日志。默认开启时，日志会记录预测、采纳和提交文本等信息。
+示例不是默认值；完整默认值如下。修改后重新加载对应 profile 或重启 DSH。
 
-完整参数见下方 [Configuration](#configuration)。移除插件：
-
-```sh
-dsh plugin --profile desktop remove dsh-prompt-prediction
-```
-
-## English documentation
-
-## Requirements
-
-- DeepSeek Harness `0.2.1-rc.5` or a compatible `0.2.x` release. Tested against `0.2.1-rc.5`.
-- Node.js 24 or newer for development and tests.
-- A working model route in your DSH session.
-
-## Install
-
-Clone this repository and link it into your DSH profile:
-
-```sh
-git clone https://github.com/QingJ01/dsh-prompt-prediction.git
-cd dsh-prompt-prediction
-dsh plugin --profile desktop add "link:$(pwd)"
-```
-
-Replace `desktop` with your profile name if needed. Keep the checkout at the same location while using a linked installation. Refresh existing GUI windows to load the client plugin; restart DSH if the host plugin does not load automatically.
-
-To remove:
-
-```sh
-dsh plugin --profile desktop remove dsh-prompt-prediction
-```
-
-## Interaction
-
-- A normally completed agent turn triggers one prediction. Failed, interrupted and aborted turns do not.
-- Suggestions appear only in a completely empty composer, without attachments, reference chips or queued messages.
-- **Tab / →** fills the focused composer as an undoable draft edit. Review or edit it before sending.
-- **Enter** remains owned by DSH's normal submission, queue and command handling. It does not accept a prediction.
-- A polite accessible status describes the suggestion and acceptance keys. **Escape** dismisses the current suggestion so **Tab** can navigate normally; polling does not revive the dismissed suggestion for the same turn.
-- State requests have a five-second deadline; failures clear stale suggestions and retry with bounded backoff.
-- Typing, IME composition, menus, disabled input, running sessions and Plan mode hide the suggestion.
-- A long suggestion uses a single-line preview with an ellipsis; acceptance inserts the full suggestion.
-- Deleting back to an empty draft can show the same prediction again. A new user message or turn invalidates the old prediction.
-
-This follows the core Codex interaction, with deliberate DSH adaptations: Enter behavior is preserved, and the preview is a DOM overlay rather than an editor decoration.
-
-## Configuration
-
-The bundle adds a `prompt-prediction` row with working defaults. Override it in your profile's `cordis.patch.yml`:
-
-```yaml
-- id: prompt-prediction
-  config:
-    enabled: true
-    maxSuggestionChars: 160
-    timeoutMs: 15000
-    auditLog: false
-```
-
-| Key | Default | Purpose |
+| 参数 | 默认值 | 含义 |
 | --- | --- | --- |
-| `enabled` | `true` | Enable or disable the plugin. |
-| `provider`, `model` | unset | Leave both unset to reuse the session route. Set both to use a separate prediction route with compact history. |
-| `maxOutputTokens` | `1024` | Prediction output budget, including reasoning where applicable. |
-| `timeoutMs` | `20000` | Deadline; late results are discarded. |
-| `maxSuggestionChars` | `200` | Maximum suggestion length. |
-| `compactTurns` | `8` | User turns retained when using a separate route. |
-| `maxHistoryChars` | `0` | Ordinary-text history guard; `0` disables it. This does not measure the full serialized request size. |
-| `eagerWindowMs` | `1800000` | Time after the last browser interaction during which a session may generate background predictions. |
-| `auditLog` | `true` | Write prediction and interaction records to the local audit log. |
+| `enabled` | `true` | 是否启用预测；设为 `false` 关闭 |
+| `provider`, `model` | 未设置 | 均不设置时沿用会话路由；必须同时设置才能使用独立预测路由 |
+| `maxOutputTokens` | `1024` | 预测输出 token 预算，适用时包括推理 token |
+| `timeoutMs` | `20000` | 模型请求超时，单位毫秒；超时后丢弃迟到结果 |
+| `maxSuggestionChars` | `200` | 建议长度上限，以 UTF-16 单元计数，截断不拆开代理对；不是屏幕显示字数 |
+| `compactTurns` | `8` | 独立路由保留的用户轮次数 |
+| `maxHistoryChars` | `0` | 普通文本历史长度保护；`0` 关闭，不代表完整序列化请求大小 |
+| `eagerWindowMs` | `1800000` | 最近被浏览器访问后允许后台预测的窗口，毫秒（30 分钟） |
+| `auditLog` | `true` | 是否将预测与交互记录写入本地日志 |
 
-A separate route can be configured with your own provider and model identifiers:
+输出预算、模型超时、建议长度、精简轮数和后台窗口按正整数处理：小数向下取整，不足 `1` 或无效值回退默认值。关闭预测应使用 `enabled: false`，而不是 `timeoutMs: 0`。
+
+独立模型配置（标识符需替换为 DSH 中实际可用的值）：
 
 ```yaml
 - id: prompt-prediction
@@ -142,71 +119,81 @@ A separate route can be configured with your own provider and model identifiers:
     compactTurns: 8
 ```
 
-## Model use and local data
+只设置 `provider` 或 `model` 之一会回退到会话路由。`maxSuggestionChars` 只限制接收长度；增大它不会改写模型指令中“最多 200 字符”的要求。
 
-Each eligible turn makes an auxiliary model request. By default it uses the session's route, history and tool declarations so the provider can reuse its cached prefix. Cache behavior and cost depend on the provider; a cold, long conversation can be expensive. An alternate route uses a compact text history instead.
+<a id="model-use-and-local-data"></a>
 
-The request asks for `{"suggestion": "..."}` or `{"suggestion": null}`. Predictions are held in memory and are not appended to the agent's session history. Tool calls from a prediction are discarded rather than executed.
+## 模型费用与隐私
 
-With `auditLog: true`, local records are written to `$DSH_HOME/prompt-prediction/events.jsonl` (or `~/.dsh/prompt-prediction/events.jsonl`). Records can include suggestion text, accepted/submitted text, timing, usage and interaction diagnostics. The log rotates at approximately 4 MiB, checked every 100 writes, keeping one previous file. Set `auditLog: false` to disable it.
+默认沿用会话的模型路由、历史及工具声明，额外发起预测请求。提供商可能复用前缀缓存，但**不保证命中缓存或免费**；长会话和冷缓存尤其需要关注费用。独立路由只使用精简文本历史。
 
-The browser bridge uses DSH's authenticated owner `connection.fetch` registry. Anonymous requests are rejected. No external analytics service is configured by this plugin; model requests still go to the configured model provider.
+预测保存在插件内存中，不加入 Agent 会话历史。预测中的工具调用会被丢弃。Plan 模式及排队状态的隐藏逻辑在客户端；最近访问过的会话仍可能在 `eagerWindowMs` 内产生后台预测费用。
 
-## Architecture
+默认审计日志位置：
 
-- `lib/index.js`: host lifecycle, auxiliary model calls, authenticated Fetch routes and local feedback.
-- `lib/client.js`: composer overlay, measurement, placeholder ownership and keyboard acceptance. It loads React from DSH's module table.
-- `lib/prediction.js`: configuration, history handling, prediction instruction and response parsing.
-- `cordis.patch.yml`: bundle configuration.
+- 设置了 `DSH_HOME`：`$DSH_HOME/prompt-prediction/events.jsonl`。
+- 未设置：`~/.dsh/prompt-prediction/events.jsonl`。
 
-The plugin observes session events and invalidates stale results on new messages or turns. Cancellation, deadlines, revision guards and response budgets prevent stale results from overwriting a draft or accumulating without bounds inside the plugin. A provider that ignores cancellation may still retain its own underlying request.
+日志可能包含预测、采纳与提交文本、耗时、用量及交互诊断。每 100 次写入检查大小，超过约 4 MiB 时轮转，保留一个旧文件。`auditLog: false` 停止后续写入，**不会删除已有文件**。
 
-## Tests
+插件未配置外部分析服务；模型请求仍会发送到所配置的提供商。浏览器桥接使用 DSH owner 身份认证，匿名请求会被拒绝。提交 issue 前请删去日志中的提示词、路径、密钥及其他敏感内容。
 
-The standard suite runs without installing dependencies:
+## 常见问题
+
+| 现象 | 建议检查 |
+| --- | --- |
+| `dsh: command not found` | 先安装 DSH 并确保 CLI 可在终端运行；本仓库不包含 DSH |
+| 安装后没有灰字 | 确认安装到当前 profile，刷新窗口，必要时重启；检查 `enabled` 与模型路由 |
+| 只有部分回复后有建议 | 需正常结束且输入框为空；模型拒绝、输出无效或超时也可能没有建议 |
+| 按 Tab 没有填入 | 聚焦可编辑输入框，关闭菜单，结束 IME 组字；检查附件、引用、队列及草稿 |
+| 想用 Tab 切换焦点 | 先按 Esc 忽略当前建议，或使用 Shift+Tab 向前移动 |
+| 建议消失后又恢复 | 状态请求失败或超时会清空旧建议并重试；检查 DSH 连接 |
+| 测试显示跳过 | 部分集成测试需要提取的 DSH runtime；跳过不代表验证通过 |
+
+仍有问题？请到 [Issues](https://github.com/QingJ01/dsh-prompt-prediction/issues) 提供 DSH/Node/操作系统版本、安装 profile、复现步骤、预期与实际结果，以及脱敏后的相关配置。不要直接上传完整会话或审计日志。
+
+<a id="architecture"></a>
+<a id="tests"></a>
+
+## 开发与测试
+
+| 文件 | 职责 |
+| --- | --- |
+| `lib/index.js` | Host 生命周期、辅助模型请求、认证桥接与审计日志 |
+| `lib/client.js` | 输入框浮层、布局、占位文字与键盘采纳 |
+| `lib/prediction.js` | 配置归一化、历史处理、预测指令与结果解析 |
+| `cordis.patch.yml` | 插件默认配置行 |
+
+无需安装依赖即可运行：
 
 ```sh
 npm test
 ```
 
-Four transport integration tests load functions from an extracted, locally installed DSH runtime. Without that runtime, those four tests explicitly skip. Set `DSH_EXTRACTED_ROOT` to a directory containing package folders such as `dsh-client-connection` and `dsh-llm`:
+四项传输集成测试需要提取的 DSH runtime；缺少时明确跳过。通过 `DSH_EXTRACTED_ROOT` 指定包含 `dsh-client-connection`、`dsh-llm` 等包目录的位置：
 
 ```sh
 DSH_EXTRACTED_ROOT=/path/to/extracted-dsh npm test
 ```
 
-The integration tests exercise the actual HTTP bridge, owner Fetch registry and assistant-message provenance boundary. Test auditing is disabled, so the tests do not append fabricated interactions to your DSH audit log.
+<a id="browser-regression-checks"></a>
 
-### Browser regression checks
+浏览器回归依赖与命令见 [Browser regression checks](README.en.md#browser-regression-checks)。该脚本使用 macOS 标准 Chrome 路径；浏览器夹具、真实 HTTP/Lexical 集成、Desktop IPC 和模型提供商实测是不同验证层级，不能相互替代。仓库不分发 DSH 源码或提取的资源。
 
-Requires Node.js 24 and Google Chrome at its standard macOS application path. Download React's test runtimes first:
+<a id="compatibility-limits"></a>
 
-```sh
-mkdir -p /tmp/pp-review-browser
-curl -fLsS https://unpkg.com/react@18.3.1/umd/react.development.js -o /tmp/pp-review-browser/react.js
-curl -fLsS https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js -o /tmp/pp-review-browser/react-dom.js
-node test/browser-review.mjs
-```
+## 兼容性边界
 
-This starts an isolated headless browser and a temporary fixture server. It checks actual rendering, placeholder restoration, hint alignment, narrow layouts, menus, composition, busy/Plan states and session switching. Screenshots are written under `artifacts/review/`.
+- 依赖 DSH `0.2.1-rc.5` 的部分内部接口，后续版本可能改变。
+- 预测仅是普通文本，不渲染文件引用芯片。
+- 超时阻止插件接收迟到结果；提供商若忽略取消，底层请求可能仍继续。
+- 完整 Desktop IPC、所有外部模型提供商和各类屏幕阅读器尚未完成端到端验证。
+- 不自动发送，不保证每轮都有建议，也不保证建议正确。
 
-For the stronger HTTP-to-Lexical check:
+## English documentation
 
-```sh
-DSH_EXTRACTED_ROOT=/path/to/extracted-dsh node test/browser-review.mjs --integrated
-```
-
-This loads the installed DSH's real HTTP bridge, model provenance boundary, Lexical editor, input shell and keymap. It checks Tab/ArrowRight insertion, no automatic send, undo/redo, stale-revision refusal and preserving Enter behavior. Model output and owner identity are deterministic fixtures; unrelated business services use test substitutes. It does not send messages from an existing DSH conversation. DSH source code and extracted application assets are not distributed in this repository.
-
-## Compatibility limits
-
-- Some integration points are specific to DSH `0.2.1-rc.5`; later releases can change them.
-- Plan and queue suppression are client-side. Recently watched sessions can still incur background prediction cost within `eagerWindowMs`.
-- The overlay cannot render file-reference chips inside suggestions.
-- Catch-up uses the session event snapshot; negative results are cached to avoid scanning on every poll.
-- Full Desktop IPC and every external model provider have not been validated end to end.
-- Browser fixtures and integration tests do not replace checking the result in your own DSH window.
+See the [English guide](README.en.md) for installation, configuration, privacy, troubleshooting and test commands.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE)。非官方项目，与 DeepSeek 或 OpenAI 无隶属关系。

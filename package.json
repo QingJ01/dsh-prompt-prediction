@@ -1,14 +1,16 @@
 {
   "name": "dsh-prompt-prediction",
   "version": "0.1.0",
-  "description": "Predicts the user's next message after an agent reply and fills it into the empty composer on Tab",
+  "description": "Unofficial DeepSeek Harness plugin for next-prompt ghost text; Tab or ArrowRight fills an editable draft without sending it.",
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "composer",
     "prediction",
-    "ghost-text"
+    "ghost-text",
+    "prompt-prediction",
+    "autocomplete"
   ],
   "license": "MIT",
   "repository": {
@@ -33,6 +35,8 @@
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
+    "docs/images/preview.png",
     "LICENSE"
   ],
   "scripts": {
