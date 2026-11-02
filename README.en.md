@@ -10,7 +10,7 @@ An unofficial DeepSeek Harness (DSH) plugin inspired by Codex's next-prompt inte
 
 *Rendered with the plugin frontend and an example suggestion, not a model-accuracy benchmark or proof of full DSH end-to-end validation.*
 
-This is a DSH plugin, not a standalone chat app or browser extension. No build step or standalone production dependencies are needed; DSH supplies the host services, Cordis and React.
+This is a DSH plugin, not a standalone chat app or browser extension. No build step is needed; DSH supplies the host services, Cordis, Schemastery and React.
 
 ## Requirements
 
@@ -66,6 +66,10 @@ This follows the core Codex interaction, with deliberate DSH adaptations: Enter 
 
 ## Configuration
 
+Open **Plugins → Prompt Prediction → Prediction settings** to edit prediction enablement, suggestion length, model-request timeout, output token budget and local audit logging. Changes apply immediately after Save; leaving the page discards unsaved edits. Reset restores the current profile's inherited value, which may differ from the built-in defaults below. Read-only deployments cannot save.
+
+Disabling predictions cancels pending requests and clears old suggestions. Re-enabling or changing prediction parameters can regenerate a suggestion for the latest completed turn while the composer is empty, making another model request. Disabling logging does not delete existing files.
+
 The bundle adds a `prompt-prediction` row with working defaults. Override it in your profile's `cordis.patch.yml`:
 
 ```yaml
@@ -101,7 +105,7 @@ A separate route can be configured with your own provider and model identifiers:
     compactTurns: 8
 ```
 
-Set both route fields: supplying only one falls back to the session route. Positive numeric settings (`maxOutputTokens`, `timeoutMs`, `maxSuggestionChars`, `compactTurns`, `eagerWindowMs`) are rounded down; values below 1 or invalid values use defaults. Use `enabled: false`, not `timeoutMs: 0`, to disable prediction. Increasing `maxSuggestionChars` does not change the instruction's 200-character generation limit.
+Set both route fields: supplying only one falls back to the session route. DSH validates `maxOutputTokens`, `timeoutMs` and `maxSuggestionChars` as positive integers; timeout must not exceed `2147483647` ms. Replace any legacy zero, fractional or string values with valid numbers. `compactTurns` and `eagerWindowMs` are still rounded down, with invalid values or values below 1 using defaults. Use `enabled: false`, not `timeoutMs: 0`, to disable prediction. Increasing `maxSuggestionChars` does not change the instruction's 200-character generation limit.
 
 ## Model use and local data
 
@@ -138,9 +142,10 @@ The plugin observes session events and invalidates stale results on new messages
 
 ## Tests
 
-The standard suite runs without installing dependencies:
+Install development dependencies before running the suite (DSH supplies runtime peers):
 
 ```sh
+npm install --ignore-scripts
 npm test
 ```
 

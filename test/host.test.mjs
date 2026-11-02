@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { apply, inject, name } from '../lib/index.js'
+import { apply, Config, inject, name } from '../lib/index.js'
 
 /**
  * These tests drive the host half against a fake cordis context: the plugin is
@@ -132,6 +132,64 @@ test('the module exports a plain Cordis plugin', () => {
   assert.equal(name, 'dsh-prompt-prediction')
   assert.deepEqual(inject, ['sessions', 'llm', 'connection'])
   assert.equal(typeof apply, 'function')
+})
+
+test('live settings schema preserves defaults and advanced route configuration', () => {
+  const config = Config({ provider: 'custom', model: 'fast', compactTurns: 3 })
+  assert.equal(config.enabled.get(), true)
+  assert.equal(config.auditLog.get(), true)
+  assert.equal(config.maxSuggestionChars.get(), 200)
+  assert.equal(config.timeoutMs.get(), 20000)
+  assert.equal(config.maxOutputTokens.get(), 1024)
+  assert.equal(config.provider, 'custom')
+  assert.equal(config.model, 'fast')
+  assert.equal(config.compactTurns, 3)
+  for (const field of ['maxSuggestionChars', 'timeoutMs', 'maxOutputTokens']) {
+    for (const invalid of [0, -1, 0.5, '10']) assert.throws(() => Config({ [field]: invalid }))
+  }
+  assert.throws(() => Config({ timeoutMs: 2147483648 }))
+})
+
+test('live settings clear ready suggestions and use the new limits after re-enabling', async () => {
+  const session = makeSession()
+  const config = Config({ auditLog: false })
+  const harness = makeHarness({ session, config, stream: streamOf('{"suggestion":"run tests"}') })
+  const first = await settle(harness.call, session.id)
+  assert.equal(first.text, 'run tests')
+  const write = Symbol.for('cosmokit.volatile.write')
+  config.enabled[write](false)
+  harness.emit('loader/volatile-update', [['enabled']])
+  const disabled = await settle(harness.call, session.id)
+  assert.equal(disabled.status, 'idle')
+  assert.equal(disabled.text, null)
+  assert.ok(disabled.rev > first.rev)
+  assert.equal(harness.calls.length, 1)
+  config.enabled[write](true)
+  config.maxSuggestionChars[write](3)
+  config.maxOutputTokens[write](512)
+  harness.emit('loader/volatile-update', [['enabled'], ['maxSuggestionChars'], ['maxOutputTokens']])
+  assert.equal((await settle(harness.call, session.id)).text, 'run')
+  assert.equal(harness.calls.at(-1).prepared.maxTokens, 512)
+})
+
+test('live disabling cancels pending requests and rejects their late results', async () => {
+  const session = makeSession()
+  const config = Config({ auditLog: false })
+  let release
+  const pending = new Promise(resolve => { release = resolve })
+  const harness = makeHarness({ session, config, stream: async function* () {
+    await pending
+    yield { type: 'text-delta', text: '{"suggestion":"stale"}' }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  } })
+  await harness.call('/api/dsh-prompt-prediction/state', { query: { sessionId: session.id } })
+  await new Promise(resolve => setImmediate(resolve))
+  config.enabled[Symbol.for('cosmokit.volatile.write')](false)
+  harness.emit('loader/volatile-update', [['enabled']])
+  release()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal((await settle(harness.call, session.id)).text, null)
+  assert.equal((await harness.call('/api/dsh-prompt-prediction/ping')).body.running, 0)
 })
 
 test('registers the bridge routes', async () => {

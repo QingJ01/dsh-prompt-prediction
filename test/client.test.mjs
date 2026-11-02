@@ -12,7 +12,7 @@ import vm from 'node:vm'
 const clientPath = new URL('../lib/client.js', import.meta.url)
 
 /** Evaluate lib/client.js against a fake `window.__ModuleLoader__` and fake React. */
-function loadClient() {
+function loadClient({ primitives } = {}) {
   const source = readFileSync(clientPath, 'utf8')
   const registrations = []
   const styleTags = []
@@ -66,6 +66,7 @@ function loadClient() {
   assert.equal(registration.id, 'dsh-prompt-prediction')
   const exportsObject = registration.factory((specifier) => {
     if (specifier === 'react') return React
+    if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return primitives
     throw new Error(`unexpected require(${specifier})`)
   })
   return { exports: exportsObject, registration, styleTags, React, sandbox }
@@ -74,6 +75,70 @@ function loadClient() {
 test('the bundle registers itself under the package name', () => {
   const { registration } = loadClient()
   assert.equal(registration.id, 'dsh-prompt-prediction')
+})
+
+test('the detail page registers native settings with validated staged fields', () => {
+  let specs
+  let disposeCount = 0
+  const registrations = []
+  const effects = []
+  const dictionaries = {}
+  const primitives = {
+    SettingsForm: 'form', SettingsValueField: 'number-field',
+    settingsNumberField: field => ({ field, format: String,
+      parse: text => text === '' ? { kind: 'clear' } : { kind: 'set', value: Number(text) } }),
+    SettingsFormModel: class {
+      constructor(scope, fields) { assert.equal(scope, 'scope'); specs = fields }
+      bind(project) { return { getSnapshot: project } }
+      shell() { return { available: true, writable: true, saving: false } }
+      field() { return { text: 'true', overridden: false, invalid: false } }
+      actions() { return { edit() {}, resetField() {}, save() {}, discard() {} } }
+      dispose() { disposeCount++ }
+    },
+  }
+  const { exports } = loadClient({ primitives })
+  const ctx = {
+    inject(services, callback) {
+      assert.deepEqual([...services], ['locale', 'configForms'])
+      callback(ctx)
+    },
+    effect(factory) { effects.push(factory()) },
+    locale: { register(ns, locales) { dictionaries[ns] = locales; return () => {} } },
+    configForms: {
+      get(ns) { assert.equal(ns, 'prompt-prediction'); return 'scope' },
+      whileServed(names, factory) {
+        assert.deepEqual([...names], ['prompt-prediction'])
+        return factory()
+      },
+    },
+    slots: {
+      inject(_name, factory) { return factory() },
+      register(descriptor, component) { registrations.push({ descriptor, component }); return () => {} },
+    },
+  }
+  exports.apply(ctx)
+  const settings = registrations.find(item => item.descriptor.name === 'plugins.bundle.config')
+  assert.equal(settings.descriptor.key, 'dsh-prompt-prediction')
+  assert.deepEqual([...specs.map(spec => spec.field)],
+    ['enabled', 'maxSuggestionChars', 'timeoutMs', 'maxOutputTokens', 'auditLog'])
+  assert.equal(specs[0].parse('false').value, false)
+  for (const field of ['maxSuggestionChars', 'timeoutMs', 'maxOutputTokens']) {
+    const spec = specs.find(item => item.field === field)
+    for (const invalid of ['0', '-1', '0.5', 'Infinity', 'NaN']) assert.equal(spec.parse(invalid), undefined)
+    assert.equal(spec.parse('').kind, 'clear')
+    assert.equal(spec.parse('80').value, 80)
+  }
+  assert.equal(specs.find(item => item.field === 'timeoutMs').parse('2147483648'), undefined)
+  const face = settings.descriptor.inject()
+  const rendered = settings.component({
+    ...face, view: 'page',
+    t: key => dictionaries['promptPrediction.settings'].zh[key],
+    usePredictionSettings: selector => selector(face.hooks.predictionSettings.getSnapshot()),
+  })
+  assert.equal(rendered.type, 'form')
+  assert.equal(rendered.props.labels.save, '保存')
+  for (const dispose of effects) dispose?.()
+  assert.equal(disposeCount, 1)
 })
 
 test('the bundle exports a client plugin with a slots dependency', () => {
@@ -87,6 +152,7 @@ test('applying the plugin registers the composer overlay', () => {
   const registered = []
   let injectedName = null
   const ctx = {
+    inject() {},
     slots: {
       inject(name, factory) {
         injectedName = name
@@ -127,6 +193,7 @@ test('the overlay component tolerates missing standard props', () => {
   const { exports, React } = loadClient()
   const registered = []
   exports.apply({
+    inject() {},
     slots: {
       inject: (_name, factory) => factory(),
       register: (descriptor, component) => registered.push({ descriptor, component }),

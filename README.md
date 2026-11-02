@@ -11,7 +11,7 @@ DeepSeek Harness（DSH）的非官方插件：Agent 正常完成一轮回复后�
 | 运行环境 | DSH 插件，不是独立聊天应用或浏览器扩展 |
 | 声明兼容范围 | DSH `>=0.2.1-rc.5 <0.3.0`；适配基于 `0.2.1-rc.5`，不表示范围内每个版本都已实测 |
 | Node.js | `>=24.0.0`；本地开发和测试需要 |
-| 构建与依赖 | 无构建步骤，无独立生产依赖；DSH 提供 Cordis、React 等宿主能力 |
+| 构建与依赖 | 无构建步骤；DSH 提供 Cordis、Schemastery、React 等宿主能力 |
 | 模型费用 | 预测会额外请求模型，可能计费 |
 | 本地日志 | 默认开启，可能记录预测及交互文本；可用 `auditLog: false` 关闭 |
 | 许可证 | [MIT](LICENSE) |
@@ -82,6 +82,10 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 
 ## 配置
 
+打开 **插件 → 提示词预测 → 预测设置**，可调整预测开关、建议长度、模型请求超时、输出 token 预算和本地审计日志。点击「保存」后立即生效；离开页面会放弃未保存的编辑。恢复默认会回到当前 profile 的继承值，不一定是下表中的内置默认值。
+
+关闭预测会取消待处理请求并清除旧建议。重新开启或改变预测参数后，空输入框可能对最近完成的一轮重新生成建议，产生额外模型请求。关闭日志不会删除已有文件。只读部署不可保存。
+
 插件包会插入 ID 为 `prompt-prediction` 的配置行。在目标 profile 的 `cordis.patch.yml` 中覆盖该行，例如：
 
 ```yaml
@@ -107,7 +111,7 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 | `eagerWindowMs` | `1800000` | 最近被浏览器访问后允许后台预测的窗口，毫秒（30 分钟） |
 | `auditLog` | `true` | 是否将预测与交互记录写入本地日志 |
 
-输出预算、模型超时、建议长度、精简轮数和后台窗口按正整数处理：小数向下取整，不足 `1` 或无效值回退默认值。关闭预测应使用 `enabled: false`，而不是 `timeoutMs: 0`。
+输出预算、模型超时和建议长度由 DSH 配置 schema 校验，必须为正整数；超时不能超过 `2147483647` 毫秒。旧配置中的零、小数或字符串需先改为有效值。精简轮数和后台窗口仍向下取整，不足 `1` 或无效值回退默认值。关闭预测应使用 `enabled: false`，而不是 `timeoutMs: 0`。
 
 独立模型配置（标识符需替换为 DSH 中实际可用的值）：
 
@@ -164,9 +168,10 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 | `lib/prediction.js` | 配置归一化、历史处理、预测指令与结果解析 |
 | `cordis.patch.yml` | 插件默认配置行 |
 
-无需安装依赖即可运行：
+安装开发依赖后运行（宿主依赖由 DSH 提供）：
 
 ```sh
+npm install --ignore-scripts
 npm test
 ```
 

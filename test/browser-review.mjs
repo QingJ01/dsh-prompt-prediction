@@ -21,7 +21,7 @@ p{margin:0} [data-composer-placeholder]{position:absolute;top:0;left:0;color:#77
 window.feedback=[];window.inserts=[];window.predictionText='这条建议很长，用于验证窄窗口时只占一行，不会挤进下面的工具栏，也不会覆盖 Tab 提示。';
 let plugin;window.__ModuleLoader__={load:r=>{plugin=r.factory(n=>{if(n==='react')return React;throw Error(n)})}};
 </script><script src="/client.js"></script><script>
-let Component;plugin.apply({slots:{inject:(_,fn)=>fn(),register:(_,c)=>{Component=c}}});
+let Component;plugin.apply({inject(){},slots:{inject:(_,fn)=>fn(),register:(_,c)=>{Component=c}}});
 let state={draft:'',draftRev:0,attachmentIds:[],phase:'plain',occurrences:[],queue:[]};const listeners=new Set();
 window.changeDraft=(draft)=>{state={...state,draft,draftRev:state.draftRev+1};const e=document.querySelector('[contenteditable]');e.textContent=draft;if(!draft)e.innerHTML='<p><br></p>';for(const f of listeners)f()};
 const inputActions={captureInsertion:()=>({draftRev:state.draftRev}),insertText:(text,span)=>{if(state.draft!==''||span.draftRev!==state.draftRev)return false;inserts.push(text);changeDraft(text);return true}};
