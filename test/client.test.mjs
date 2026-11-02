@@ -83,16 +83,23 @@ test('the detail page registers native settings with validated staged fields', (
   const registrations = []
   const effects = []
   const dictionaries = {}
+  let writable = true
+  let saving = false
+  const edits = []
+  const resets = []
+  let saves = 0
   const primitives = {
     SettingsForm: 'form', SettingsValueField: 'number-field',
+    Switch: 'native-switch', Button: 'native-button', Tag: 'native-tag',
     settingsNumberField: field => ({ field, format: String,
       parse: text => text === '' ? { kind: 'clear' } : { kind: 'set', value: Number(text) } }),
     SettingsFormModel: class {
       constructor(scope, fields) { assert.equal(scope, 'scope'); specs = fields }
       bind(project) { return { getSnapshot: project } }
-      shell() { return { available: true, writable: true, saving: false } }
-      field() { return { text: 'true', overridden: false, invalid: false } }
-      actions() { return { edit() {}, resetField() {}, save() {}, discard() {} } }
+      shell() { return { available: true, writable, saving } }
+      field() { return { text: 'true', overridden: true, invalid: false } }
+      actions() { return { edit: (...args) => edits.push(args), resetField: field => resets.push(field),
+        save: () => saves++, discard() {} } }
       dispose() { disposeCount++ }
     },
   }
@@ -130,13 +137,32 @@ test('the detail page registers native settings with validated staged fields', (
   }
   assert.equal(specs.find(item => item.field === 'timeoutMs').parse('2147483648'), undefined)
   const face = settings.descriptor.inject()
-  const rendered = settings.component({
+  const render = () => settings.component({
     ...face, view: 'page',
     t: key => dictionaries['promptPrediction.settings'].zh[key],
     usePredictionSettings: selector => selector(face.hooks.predictionSettings.getSnapshot()),
   })
+  const rendered = render()
   assert.equal(rendered.type, 'form')
   assert.equal(rendered.props.labels.save, '保存')
+  const nodes = node => !node || typeof node !== 'object' ? []
+    : [node, ...(node.children ?? []).flat(Infinity).flatMap(nodes)]
+  const switches = nodes(rendered).filter(node => node.type === 'native-switch')
+  assert.deepEqual(switches.map(node => node.props.label), ['启用预测', '本地审计日志'])
+  assert.ok(switches.every(node => node.props.checked && !node.props.disabled))
+  assert.equal(nodes(rendered).filter(node => node.type === 'select').length, 0)
+  switches[0].props.onChange(false)
+  switches[1].props.onChange(false)
+  assert.deepEqual(edits, [['enabled', 'false'], ['auditLog', 'false']])
+  nodes(rendered).find(node => node.type === 'native-button').props.onClick()
+  assert.deepEqual(resets, ['enabled'])
+  assert.equal(saves, 0, 'toggles and reset stage changes without saving')
+  for (const state of [{ writable: false, saving: false }, { writable: true, saving: true }]) {
+    writable = state.writable
+    saving = state.saving
+    assert.ok(nodes(render()).filter(node => ['native-switch', 'native-button'].includes(node.type))
+      .every(node => node.props.disabled))
+  }
   for (const dispose of effects) dispose?.()
   assert.equal(disposeCount, 1)
 })
