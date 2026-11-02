@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-prediction",
-  "version": "0.2.0",
+  "version": "0.1.1",
   "description": "Unofficial DeepSeek Harness plugin for next-prompt ghost text; Tab or ArrowRight fills an editable draft without sending it.",
   "keywords": [
     "dsh",
