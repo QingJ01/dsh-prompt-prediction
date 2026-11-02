@@ -49,6 +49,17 @@ test('turnIsPredictable only accepts completed turns', () => {
   assert.equal(turnIsPredictable(undefined), false)
 })
 
+test('positive configuration rejects fractions that would round down to zero', () => {
+  const keys = ['maxOutputTokens', 'timeoutMs', 'maxSuggestionChars', 'compactTurns', 'eagerWindowMs']
+  const defaults = normalizeConfig({})
+  for (const value of [0.5, Number.MIN_VALUE, 0, -1, NaN, Infinity]) {
+    const config = normalizeConfig(Object.fromEntries(keys.map(key => [key, value])))
+    for (const key of keys) assert.equal(config[key], defaults[key], `${key}: ${value}`)
+  }
+  const config = normalizeConfig(Object.fromEntries(keys.map(key => [key, 1.9])))
+  for (const key of keys) assert.equal(config[key], 1)
+})
+
 test('isDerivedSession rejects subagent children and fork seeds', () => {
   assert.equal(isDerivedSession(undefined), false)
   assert.equal(isDerivedSession({ isSeeded: false }), false)
@@ -154,6 +165,20 @@ test('parseSuggestion normalizes whitespace and trims to the cap', () => {
 
 test('parseSuggestion rejects the model declining', () => {
   assert.deepEqual(parseSuggestion('{"suggestion":null}'), { ok: false, reason: 'declined' })
+})
+
+test('suggestion truncation preserves complete Unicode surrogate pairs', () => {
+  for (const character of ['😀', '𠮷']) {
+    const split = parseSuggestion(JSON.stringify({ suggestion: 'a'.repeat(199) + character }))
+    assert.deepEqual(split, { ok: true, text: 'a'.repeat(199) })
+    assert.ok(split.text.isWellFormed())
+    const fits = parseSuggestion(JSON.stringify({ suggestion: 'a'.repeat(198) + character + 'x' }))
+    assert.equal(fits.text, 'a'.repeat(198) + character)
+    assert.ok(fits.text.isWellFormed())
+    assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: character }), { maxSuggestionChars: 1 }), {
+      ok: false, reason: 'blank-suggestion',
+    })
+  }
 })
 
 test('parseSuggestion rejects unusable payloads', () => {

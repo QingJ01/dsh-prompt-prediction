@@ -38,6 +38,8 @@ dsh plugin --profile desktop add "link:$(pwd)"
 
 **插件不会自动发送消息。** 输入文字、中文输入法组字、打开菜单、会话运行中或处于 Plan 模式时，灰字会隐藏。采纳操作支持撤销、重做。
 
+屏幕阅读器可获知建议全文与采纳键。按 **Esc** 可忽略当前建议，随后 **Tab** 恢复焦点导航；同一轮建议不会因轮询重新出现。状态请求超时会隐藏旧建议并自动重试。
+
 与 Codex 的适配差异：**Enter 保留 DSH 原有的发送、排队和命令处理逻辑，不用于采纳灰字**；长建议单行省略显示，但采纳时会插入完整内容。
 
 ### 模型、费用与配置
@@ -97,6 +99,8 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 - Suggestions appear only in a completely empty composer, without attachments, reference chips or queued messages.
 - **Tab / →** fills the focused composer as an undoable draft edit. Review or edit it before sending.
 - **Enter** remains owned by DSH's normal submission, queue and command handling. It does not accept a prediction.
+- A polite accessible status describes the suggestion and acceptance keys. **Escape** dismisses the current suggestion so **Tab** can navigate normally; polling does not revive the dismissed suggestion for the same turn.
+- State requests have a five-second deadline; failures clear stale suggestions and retry with bounded backoff.
 - Typing, IME composition, menus, disabled input, running sessions and Plan mode hide the suggestion.
 - A long suggestion uses a single-line preview with an ellipsis; acceptance inserts the full suggestion.
 - Deleting back to an empty draft can show the same prediction again. A new user message or turn invalidates the old prediction.
@@ -165,7 +169,7 @@ The standard suite runs without installing dependencies:
 npm test
 ```
 
-There are 87 tests in the reviewed environment. Four transport integration tests load functions from an extracted, locally installed DSH runtime. Without that runtime, those four tests explicitly skip. Set `DSH_EXTRACTED_ROOT` to a directory containing package folders such as `dsh-client-connection` and `dsh-llm`:
+Four transport integration tests load functions from an extracted, locally installed DSH runtime. Without that runtime, those four tests explicitly skip. Set `DSH_EXTRACTED_ROOT` to a directory containing package folders such as `dsh-client-connection` and `dsh-llm`:
 
 ```sh
 DSH_EXTRACTED_ROOT=/path/to/extracted-dsh npm test
