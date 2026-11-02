@@ -120,6 +120,19 @@ A separate route can be configured with your own provider and model identifiers:
 
 Set both route fields: supplying only one falls back to the session route. DSH validates `maxOutputTokens`, `timeoutMs` and `maxSuggestionChars` as positive integers; timeout must not exceed `2147483647` ms. Replace any legacy zero, fractional or string values with valid numbers. `compactTurns` and `eagerWindowMs` are still rounded down, with invalid values or values below 1 using defaults. Use `enabled: false`, not `timeoutMs: 0`, to disable prediction. Increasing `maxSuggestionChars` does not change the instruction's 200-character generation limit.
 
+## Prediction quality
+
+Three constraints go into the request, and one local filter runs on the way back:
+
+1. **Sound like you** — the user's last three messages (skipping `/` and `@` payloads) are included as style anchors for length and vocabulary. Those messages are already in the model-visible history, so no extra content is disclosed.
+2. **Prefer one sentence** — real follow-ups are usually short; two clauses are only expected when the user's own messages are that long.
+3. **Do not restate the last message** — a suggestion identical to the user's previous message, ignoring punctuation and whitespace, is dropped (`repeated-user`).
+4. **Never invent credentials** — the instruction forbids verification codes, one-time passwords, passwords, API keys and tokens, and a locally detected match is dropped (`credential-shaped`). This came from a real case: with npm 2FA under discussion, the model returned `验证码：123456`.
+
+Stray Markdown emphasis and wrapping quotes are stripped so the draft is plain text.
+
+These rules improve how often a suggestion is *taken*, not the accuracy of the guess: the model can still be wrong, so review before sending.
+
 ## Model use and local data
 
 Each eligible turn makes an auxiliary model request. By default it uses the session's route, history and tool declarations so the provider may reuse its cached prefix; cache hits and free requests are not guaranteed. Cache behavior and cost depend on the provider; a cold, long conversation can be expensive. An alternate route uses a compact text history instead.

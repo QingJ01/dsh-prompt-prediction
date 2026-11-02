@@ -15,6 +15,7 @@ import {
   parseSuggestion,
   predictionInstruction,
   stripFences,
+  styleExemplars,
   turnIsPredictable,
 } from '../lib/prediction.js'
 
@@ -240,5 +241,69 @@ test('the instruction asks for JSON and forbids work', () => {
   assert.match(instruction, /"suggestion"/)
   assert.match(instruction, /Do not call tools/)
   assert.match(instruction, /most likely to type/)
-  assert.ok(instruction.length < 1200, 'instruction stays small enough to be cheap')
+  // Behavioural rules added after reviewing real predictions.
+  assert.match(instruction, /ONE short sentence/)
+  assert.match(instruction, /Never output credentials/)
+  assert.match(instruction, /Do not restate the user's own previous message/)
+  assert.ok(instruction.length < 2000, 'instruction stays small enough to be cheap')
+})
+
+test('the instruction carries the user as a style anchor, not as new context', () => {
+  const plain = predictionInstruction()
+  const anchored = predictionInstruction({ exemplars: ['先把 iOS 这条接起来，开个独立 PR'] })
+  assert.ok(!plain.includes('Style anchors'))
+  assert.match(anchored, /Style anchors/)
+  assert.ok(anchored.includes('先把 iOS 这条接起来'))
+  assert.ok(anchored.length - plain.length < 300, 'anchors stay cheap')
+})
+
+test('styleExemplars keeps the user\'s own recent messages only', () => {
+  const messages = [
+    textMessage('system', 'SYSTEM'),
+    textMessage('user', '先把 iOS 这条接起来，开个独立 PR'),
+    textMessage('assistant', '好的，已经开好'),
+    textMessage('user', '/compact'),
+    textMessage('user', '再做一轮对抗审查，重点把 Desktop IPC 这条也跑通'),
+    textMessage('user', '  再做一轮对抗审查，重点把 Desktop IPC 这条也跑通  '),
+  ]
+  const anchors = styleExemplars(messages, 3, 120)
+  assert.deepEqual(anchors, [
+    '先把 iOS 这条接起来，开个独立 PR',
+    '再做一轮对抗审查，重点把 Desktop IPC 这条也跑通',
+  ], 'assistant text, commands and duplicates are skipped')
+  assert.equal(styleExemplars(messages, 0).length, 0)
+  assert.equal(styleExemplars(undefined).length, 0)
+})
+
+test('a credential-shaped guess is dropped instead of shown', () => {
+  // Regression: real output was `验证码：123456` while npm 2FA was in context.
+  for (const value of ['验证码：123456', '验证码 123456', 'password: hunter2', 'otp=918273', 'sk-abcdefghijklmnopqrstuvwx']) {
+    const result = parseSuggestion(JSON.stringify({ suggestion: value }))
+    assert.equal(result.ok, false, value)
+    assert.equal(result.reason, 'credential-shaped', value)
+  }
+  // Merely mentioning the word is fine; only an invented value is refused.
+  const benign = parseSuggestion(JSON.stringify({ suggestion: '继续推进，验证码那步我来处理' }))
+  assert.equal(benign.ok, true)
+})
+
+test('markdown decoration and wrapping quotes never reach the composer', () => {
+  assert.equal(parseSuggestion(JSON.stringify({ suggestion: '**跑一下测试**' })).text, '跑一下测试')
+  assert.equal(parseSuggestion(JSON.stringify({ suggestion: '“好，先跑测试”' })).text, '好，先跑测试')
+  assert.equal(parseSuggestion(JSON.stringify({ suggestion: '「继续」' })).text, '继续')
+})
+
+test('a restated user message is not a prediction', () => {
+  const lastUserText = '再做一轮对抗审查，重点把 Desktop IPC 这条也跑通，版本号别改。'
+  const result = parseSuggestion(
+    JSON.stringify({ suggestion: '再做一轮对抗审查，重点把 Desktop IPC 这条也跑通，版本号别改' }),
+    { lastUserText },
+  )
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'repeated-user')
+  const different = parseSuggestion(
+    JSON.stringify({ suggestion: '再跑一遍测试确认' }),
+    { lastUserText },
+  )
+  assert.equal(different.ok, true)
 })
