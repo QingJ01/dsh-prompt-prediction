@@ -297,6 +297,7 @@ async function mountOverlay({
   staleMenu = false,
   sessionState = { running: false, openState: 'open' },
   planState = undefined,
+  describedBy = null,
 } = {}) {
   const source = readFileSync(clientPath, 'utf8')
   const head = createElement('head')
@@ -318,6 +319,7 @@ async function mountOverlay({
   editor.setAttribute('contenteditable', 'true')
   editor.setAttribute('data-composer-input', '')
   editor.setAttribute('data-placeholder', '给 DeepSeek 发送消息')
+  if (describedBy !== null) editor.setAttribute('aria-describedby', describedBy)
   editor.rect = { left: 435, top: 676, width: 686, height: 40, right: 1121, bottom: 716 }
   if (firstLine !== null) {
     const paragraph = createElement('p')
@@ -348,7 +350,14 @@ async function mountOverlay({
   activeDocument = documentSandbox
   const feedback = []
   const insertions = []
-  const timers = []
+  const timers = new Map()
+  let nextTimer = 0
+  const setTimer = (fn, delay) => {
+    const id = ++nextTimer
+    timers.set(id, { fn, delay })
+    return id
+  }
+  const clearTimer = id => timers.delete(id)
   const stateResponse = {
     rev: 3,
     status: 'ready',
@@ -363,11 +372,9 @@ async function mountOverlay({
     document: documentSandbox,
     navigator: { language: 'zh-CN' },
     localStorage: { store: new Map(), getItem(key) { return this.store.get(key) ?? null }, setItem(key, value) { this.store.set(key, String(value)) } },
-    setTimeout: (fn) => {
-      timers.push(fn)
-      return timers.length
-    },
-    clearTimeout: () => {},
+    setTimeout: setTimer,
+    clearTimeout: clearTimer,
+    AbortController,
     URL,
     ResizeObserver: class {
       observe() {}
@@ -388,11 +395,8 @@ async function mountOverlay({
       listeners: {},
       // Poll timers are recorded, never fired: one explicit poll per paint is
       // enough and a live interval would outlive the test.
-      setTimeout: (fn) => {
-        timers.push(fn)
-        return timers.length
-      },
-      clearTimeout: () => {},
+      setTimeout: setTimer,
+      clearTimeout: clearTimer,
       localStorage: null,
       addEventListener(type, handler) {
         ;(sandbox.window.listeners[type] ??= []).push(handler)
@@ -526,8 +530,14 @@ async function mountOverlay({
     runtime,
     sandbox,
     repaint: () => paint(),
-    fireTimers: () => {
-      for (const fn of timers.splice(0)) fn()
+    stateResponse,
+    pendingTimers: () => [...timers.values()].map(timer => timer.delay),
+    fireTimers: (delay) => {
+      for (const [id, timer] of [...timers]) {
+        if (delay !== undefined && timer.delay !== delay) continue
+        timers.delete(id)
+        timer.fn()
+      }
     },
   }
 }
@@ -663,7 +673,7 @@ test('modified Tab is never intercepted', async () => {
 
 test('other keys reach the composer untouched', async () => {
   const harness = await mountOverlay()
-  for (const key of ['Enter', 'Escape', 'ArrowLeft', 'ArrowDown']) {
+  for (const key of ['Enter', 'ArrowLeft', 'ArrowDown']) {
     const event = harness.pressKey(key)
     assert.equal(event.prevented, false, key)
     assert.equal(event.stopped, false, key)
@@ -715,4 +725,93 @@ test('editability is rechecked synchronously, not just by the observer', async (
   harness.editor.setAttribute('contenteditable', 'false')
   harness.pressTab()
   assert.equal(harness.insertions.length, 0)
+})
+
+for (const stalledStage of ['fetch', 'body']) {
+  test(`a stalled ${stalledStage} times out, clears the suggestion and recovers`, async () => {
+    const harness = await mountOverlay()
+    const originalFetch = harness.sandbox.fetch
+    let signal
+    harness.sandbox.fetch = (url, init) => {
+      if (!String(url).includes('/state')) return originalFetch(url, init)
+      signal = init.signal
+      const stalled = new Promise(() => {})
+      return stalledStage === 'fetch' ? stalled : Promise.resolve({ ok: true, json: () => stalled })
+    }
+    harness.fireTimers(700)
+    await flushMicrotasks(20)
+    assert.equal(signal.aborted, false)
+    harness.fireTimers(5000)
+    await flushMicrotasks(20)
+    harness.repaint()
+    assert.equal(signal.aborted, true)
+    assert.equal(harness.pressTab().prevented, false)
+    assert.ok(harness.pendingTimers().includes(1400))
+
+    let revision
+    harness.sandbox.fetch = (url, init) => {
+      if (String(url).includes('/state')) revision = new URL(url, 'http://localhost').searchParams.get('rev')
+      return originalFetch(url, init)
+    }
+    harness.fireTimers(1400)
+    await flushMicrotasks(20)
+    harness.repaint()
+    harness.repaint()
+    assert.equal(revision, '-1')
+    assert.equal(harness.pressTab().prevented, true)
+    assert.ok(harness.pendingTimers().includes(700))
+    assert.ok(!harness.pendingTimers().includes(5000))
+    harness.runtime.cleanupAll()
+  })
+}
+
+test('unmount cancels the pending poll without scheduling another', async () => {
+  const harness = await mountOverlay()
+  const originalFetch = harness.sandbox.fetch
+  let signal
+  harness.sandbox.fetch = (url, init) => {
+    if (!String(url).includes('/state')) return originalFetch(url, init)
+    signal = init.signal
+    return new Promise(() => {})
+  }
+  harness.fireTimers(700)
+  harness.runtime.cleanupAll()
+  await flushMicrotasks(20)
+  assert.equal(signal.aborted, true)
+  assert.deepEqual(harness.pendingTimers(), [])
+})
+
+test('suggestions have a persistent accessible description and Escape restores Tab navigation', async () => {
+  const harness = await mountOverlay({ describedBy: 'existing-help' })
+  const [ghost, announcement] = harness.repaint().props.children
+  assert.equal(ghost.props['aria-hidden'], 'true')
+  assert.equal(announcement.props.role, 'status')
+  assert.equal(announcement.props['aria-live'], 'polite')
+  assert.match(announcement.props.children, /跑一下测试吧/)
+  assert.match(announcement.props.children, /Tab.*Esc/)
+  assert.equal(harness.editor.getAttribute('aria-describedby'), `existing-help ${announcement.props.id}`)
+  assert.equal(harness.repaint().props.children[1].props.children, announcement.props.children)
+
+  assert.equal(harness.pressKey('Escape').prevented, true)
+  harness.repaint()
+  harness.repaint()
+  assert.equal(harness.pressTab().prevented, false)
+  assert.equal(harness.insertions.length, 0)
+  assert.equal(harness.repaint().props.children[1].props.children, '')
+  assert.equal(harness.editor.getAttribute('aria-describedby'), 'existing-help')
+
+  harness.fireTimers(700)
+  await flushMicrotasks(20)
+  harness.repaint()
+  assert.equal(harness.pressTab().prevented, false, 'same-turn polling must not revive a dismissed suggestion')
+  harness.stateResponse.turnSeq++
+  harness.stateResponse.rev++
+  harness.fireTimers(700)
+  await flushMicrotasks(20)
+  harness.repaint()
+  harness.repaint()
+  assert.equal(harness.pressTab().prevented, true, 'a new turn may suggest again')
+  harness.editor.setAttribute('aria-describedby', `${harness.editor.getAttribute('aria-describedby')} newer-help`)
+  harness.runtime.cleanupAll()
+  assert.equal(harness.editor.getAttribute('aria-describedby'), 'existing-help newer-help')
 })
