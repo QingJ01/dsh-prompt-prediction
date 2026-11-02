@@ -1,0 +1,20 @@
+# Bundle patch layer for dsh-prompt-prediction.
+#
+# The row loads the package's main entry as the host half (a plain Cordis
+# plugin). The package's `dsh.client` declaration makes the web app load its
+# ./client bundle as the browser half, which paints the ghost text into the
+# composer.
+- insert:
+    - id: prompt-prediction
+      name: dsh-prompt-prediction
+      config:
+        enabled: true
+        # Route override — leave both unset to reuse the session's own route and
+        # keep the provider prefix cache warm.
+        # provider: deepseek-official
+        # model: deepseek-v4-flash
+        maxOutputTokens: 1024
+        timeoutMs: 20000
+        maxSuggestionChars: 200
+        compactTurns: 8
+        auditLog: true
