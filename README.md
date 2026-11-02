@@ -32,6 +32,14 @@ DeepSeek Harness（DSH）的非官方插件：Agent 正常完成一轮回复后�
 
 前提：已安装兼容的 DSH，终端可运行 `dsh`，目标 profile 中的会话已有可用模型路由。
 
+从 npm 安装（推荐）：
+
+```sh
+dsh plugin --profile desktop add dsh-prompt-prediction
+```
+
+改用本地源码（需要改动或调试时）：
+
 ```sh
 git clone https://github.com/QingJ01/dsh-prompt-prediction.git
 cd dsh-prompt-prediction
@@ -40,11 +48,18 @@ dsh plugin --profile desktop add "link:$(pwd)"
 
 - 使用其他 profile 时，将 `desktop` 替换为对应名称。
 - 刷新已有 DSH 窗口以加载前端；Host 插件未自动加载时重启 DSH。
-- link 安装依赖此目录，请勿移动或删除；无需先运行 `npm install` 或构建。
+- link 安装依赖该目录，请勿移动或删除；两种方式都无需 `npm install` 或构建。
 
 ### 更新与移除
 
-在插件目录中、确认本地修改已保存后更新：
+npm 安装的版本需要重新添加以升级：
+
+```sh
+dsh plugin --profile desktop remove dsh-prompt-prediction
+dsh plugin --profile desktop add dsh-prompt-prediction
+```
+
+link 安装在插件目录中、确认本地修改已保存后更新：
 
 ```sh
 git pull --ff-only

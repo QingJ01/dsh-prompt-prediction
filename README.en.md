@@ -20,7 +20,13 @@ This is a DSH plugin, not a standalone chat app or browser extension. No build s
 
 ## Install
 
-Clone this repository and link it into your DSH profile:
+Install from npm (recommended):
+
+```sh
+dsh plugin --profile desktop add dsh-prompt-prediction
+```
+
+Or link a local checkout when you need to modify or debug it:
 
 ```sh
 git clone https://github.com/QingJ01/dsh-prompt-prediction.git
@@ -28,11 +34,18 @@ cd dsh-prompt-prediction
 dsh plugin --profile desktop add "link:$(pwd)"
 ```
 
-Replace `desktop` with your profile name if needed. Keep the checkout at the same location while using a linked installation. Refresh existing GUI windows to load the client plugin; restart DSH if the host plugin does not load automatically.
+Replace `desktop` with your profile name if needed. Refresh existing GUI windows to load the client plugin; restart DSH if the host plugin does not load automatically. A linked install depends on that directory staying in place. Neither method needs `npm install` or a build step.
 
 ### Update and remove
 
-From the linked checkout, after saving any local changes:
+A npm install upgrades by being added again:
+
+```sh
+dsh plugin --profile desktop remove dsh-prompt-prediction
+dsh plugin --profile desktop add dsh-prompt-prediction
+```
+
+From a linked checkout, after saving any local changes:
 
 ```sh
 git pull --ff-only
