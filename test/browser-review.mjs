@@ -18,7 +18,7 @@ p{margin:0} [data-composer-placeholder]{position:absolute;top:0;left:0;color:#77
 .tools{margin-top:24px;display:flex;justify-content:space-between;color:#bbb}button{background:transparent;color:inherit;border:0;font:inherit}
 </style><style data-plugin-css="dsh-prompt-prediction/style">/* existing stylesheet from an older client */</style><div data-composer-card><div id="overlay"></div><div class="grow"><div data-composer-input contenteditable="true" data-phase="plain" data-placeholder="发消息或创建任务 / 调用指令，@ 文件或其它"><p><br></p></div><div data-composer-placeholder aria-hidden="true">发消息或创建任务 / 调用指令，@ 文件或其它</div></div><div class="tools"><button id="toolbar">＋　完全权限</button><span>GPT-6.1-Sol</span></div></div>
 <script src="/react.js"></script><script src="/react-dom.js"></script><script>
-window.feedback=[];window.inserts=[];window.predictionText='这条建议很长，用于验证窄窗口时只占一行，不会挤进下面的工具栏，也不会覆盖 Tab 提示。';
+window.feedback=[];window.inserts=[];window.predictionText='先跑一遍完整测试。\\n把失败的用例修掉后再提交。';
 let plugin;window.__ModuleLoader__={load:r=>{plugin=r.factory(n=>{if(n==='react')return React;throw Error(n)})}};
 </script><script src="/client.js"></script><script>
 let Component;plugin.apply({inject(){},slots:{inject:(_,fn)=>fn(),register:(_,c)=>{Component=c}}});
@@ -215,6 +215,11 @@ try {
     await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
     assert.equal(await evaluate('sent.length'), 1)
   }
+  // Multi-paragraph guesses preview the first paragraph and accept all of them.
+  await evaluate(`changeDraft('')`)
+  await waitFor(`!!document.querySelector('[data-dsh-prediction="ghost"]')`)
+  await evaluate(`{const card=document.querySelector('[data-composer-card]');window.__origFetch=window.fetch}`)
+  assert.equal(await evaluate(`document.querySelector('[data-dsh-prediction="ghost"]').textContent.includes(String.fromCharCode(10))`), false, 'preview never renders a raw newline')
   // Whitespace is user input, not an empty draft.
   await evaluate(`changeDraft(' ')`)
   await new Promise(resolve => setTimeout(resolve, 50))

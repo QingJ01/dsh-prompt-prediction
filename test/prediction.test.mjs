@@ -14,6 +14,7 @@ import {
   normalizeConfig,
   parseSuggestion,
   predictionInstruction,
+  reasoningEffortPolicy,
   stripFences,
   styleExemplars,
   turnIsPredictable,
@@ -155,10 +156,17 @@ test('parseSuggestion accepts a plain suggestion', () => {
 })
 
 test('parseSuggestion normalizes whitespace and trims to the cap', () => {
+  // Paragraph breaks survive (a prediction may be multi-paragraph, like Codex's
+  // parsed prompt text); runs of spaces inside a paragraph collapse.
   assert.deepEqual(parseSuggestion('{"suggestion":"  run\\n\\n the   tests  "}', { maxSuggestionChars: 100 }), {
+    ok: true,
+    text: 'run\nthe tests',
+  })
+  assert.deepEqual(parseSuggestion('{"suggestion":"run   the   tests"}', { maxSuggestionChars: 100 }), {
     ok: true,
     text: 'run the tests',
   })
+  assert.equal(parseSuggestion('{"suggestion":"a\\nb\\nc\\nd"}', { maxLines: 2 }).text, 'a\nb')
   const long = parseSuggestion(JSON.stringify({ suggestion: 'x'.repeat(50) }), { maxSuggestionChars: 10 })
   assert.equal(long.ok, true)
   assert.equal(long.text.length, 10)
@@ -245,7 +253,7 @@ test('the instruction asks for JSON and forbids work', () => {
   assert.match(instruction, /ONE short sentence/)
   assert.match(instruction, /Never output credentials/)
   assert.match(instruction, /Do not restate the user's own previous message/)
-  assert.ok(instruction.length < 2000, 'instruction stays small enough to be cheap')
+  assert.match(instruction, /Abstaining is expected/)
 })
 
 test('the instruction carries the user as a style anchor, not as new context', () => {
@@ -306,4 +314,41 @@ test('a restated user message is not a prediction', () => {
     { lastUserText },
   )
   assert.equal(different.ok, true)
+})
+
+test('a multi-paragraph guess keeps its paragraphs and respects the cap', () => {
+  const two = parseSuggestion(JSON.stringify({ suggestion: '先跑测试\n再提交 PR' }))
+  assert.equal(two.ok, true)
+  assert.equal(two.text, '先跑测试\n再提交 PR', 'acceptance inserts the whole draft')
+
+  const many = parseSuggestion(JSON.stringify({ suggestion: '一\n二\n三\n四\n五' }), { maxLines: 3 })
+  assert.equal(many.text, '一\n二\n三')
+  assert.equal(many.text.split('\n').length, 3)
+
+  // Blank paragraphs never produce empty lines in the composer.
+  const sparse = parseSuggestion(JSON.stringify({ suggestion: 'a\n\n\n b ' }))
+  assert.equal(sparse.text, 'a\nb')
+})
+
+test('reasoning effort inherits by default instead of forcing the cheapest tier', () => {
+  const model = { reasoning: { efforts: [{ id: 'low' }, { id: 'high' }] } }
+  // Default policy must not downgrade a high-effort parent conversation.
+  assert.equal(reasoningEffortPolicy('inherit')({ reasoningEffort: 'high' }, model).reasoningEffort, 'high')
+  assert.equal(reasoningEffortPolicy(undefined)({ reasoningEffort: 'high' }, model).reasoningEffort, 'high')
+  // The previous behaviour stays available on request.
+  assert.equal(reasoningEffortPolicy('min')({ reasoningEffort: 'high' }, model).reasoningEffort, 'low')
+  assert.equal(reasoningEffortPolicy('high')({ reasoningEffort: 'low' }, model).reasoningEffort, 'high')
+  // An effort the model does not advertise leaves the call untouched.
+  assert.equal(reasoningEffortPolicy('xhigh')({ reasoningEffort: 'low' }, model).reasoningEffort, 'low')
+  assert.equal(normalizeConfig({}).reasoningEffort, 'inherit')
+  assert.equal(normalizeConfig({ reasoningEffort: ' min ' }).reasoningEffort, 'min')
+})
+
+test('the instruction tells the model when abstaining is expected', () => {
+  const instruction = predictionInstruction()
+  assert.match(instruction, /Abstaining is expected/)
+  assert.match(instruction, /open question/)
+  assert.match(instruction, /generic filler/)
+  assert.match(instruction, /worse than no suggestion/)
+  assert.match(instruction, /short paragraphs/)
 })

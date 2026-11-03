@@ -107,6 +107,7 @@ The example overrides defaults; the complete defaults are below. Reload the prof
 | `maxHistoryChars` | `0` | Ordinary-text history guard; `0` disables it. This does not measure the full serialized request size. |
 | `eagerWindowMs` | `1800000` | Milliseconds after the last browser interaction during which a session may generate background predictions (30 minutes). |
 | `auditLog` | `true` | Write prediction and interaction records to the local audit log. |
+| `reasoningEffort` | `inherit` | Effort for the prediction request: `inherit` follows the session (recommended), `min` takes the model's cheapest tier, or an advertised id such as `low`/`high`. Unknown ids fall back to inherit. |
 
 A separate route can be configured with your own provider and model identifiers:
 
@@ -128,6 +129,10 @@ Three constraints go into the request, and one local filter runs on the way back
 2. **Prefer one sentence** — real follow-ups are usually short; two clauses are only expected when the user's own messages are that long.
 3. **Do not restate the last message** — a suggestion identical to the user's previous message, ignoring punctuation and whitespace, is dropped (`repeated-user`).
 4. **Never invent credentials** — the instruction forbids verification codes, one-time passwords, passwords, API keys and tokens, and a locally detected match is dropped (`credential-shaped`). This came from a real case: with npm 2FA under discussion, the model returned `验证码：123456`.
+
+5. **Abstaining is expected** — the instruction spells out when to return `null`: the assistant asked an open question needing facts only the user has, the next step is the user's decision, the thread is just greetings, or the best guess is filler such as "continue" or "ok". Codex models the same state as `text: null` and treats an ignored suggestion as worse than none.
+6. **Paragraphs are allowed** — up to three short paragraphs survive (mirroring Codex, which feeds `text` through `parsePromptText`). The composer preview shows the first paragraph and the pill reports "2 paragraphs"; acceptance inserts the whole draft.
+7. **Reasoning effort inherits** — the prediction follows the parent conversation's effort by default (Codex's `configuredReasoningEffort: 'inherit'`) instead of being forced to the cheapest tier, which produced vaguer guesses. Set `reasoningEffort: min` to trade quality for cost.
 
 Stray Markdown emphasis and wrapping quotes are stripped so the draft is plain text.
 

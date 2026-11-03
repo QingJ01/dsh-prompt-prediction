@@ -125,6 +125,7 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 | `maxHistoryChars` | `0` | 普通文本历史长度保护；`0` 关闭，不代表完整序列化请求大小 |
 | `eagerWindowMs` | `1800000` | 最近被浏览器访问后允许后台预测的窗口，毫秒（30 分钟） |
 | `auditLog` | `true` | 是否将预测与交互记录写入本地日志 |
+| `reasoningEffort` | `inherit` | 预测请求的推理力度：`inherit` 沿用会话设置（推荐）、`min` 取模型最低档以省成本、或填模型声明的具体档位如 `low`/`high`；模型不支持时回退为继承 |
 
 输出预算、模型超时和建议长度由 DSH 配置 schema 校验，必须为正整数；超时不能超过 `2147483647` 毫秒。旧配置中的零、小数或字符串需先改为有效值。精简轮数和后台窗口仍向下取整，不足 `1` 或无效值回退默认值。关闭预测应使用 `enabled: false`，而不是 `timeoutMs: 0`。
 
@@ -150,6 +151,10 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 2. **优先一句话** — 真实跟随指令多为短句；只有你自己的消息本来就长时，才写两个分句。
 3. **不重复你刚说过的话** — 若预测与你上一条消息在忽略标点和空白后完全相同，直接丢弃（`repeated-user`）。
 4. **不编造凭据** — 指令禁止输出验证码、一次性密码、密码、API key 或 token；即使模型给出，本地也会丢弃（`credential-shaped`）。命中的真实案例：上下文在讨论 npm 2FA 时曾返回 `验证码：123456`。
+
+5. **允许弃权** — 明确告诉模型什么时候该返回 `null`：助手刚问了需要用户外部事实的开放问题、下一步只有用户能决定、近期只是寒暄、或最优猜测只是"继续""好的"这类空话。Codex 用 `text: null` 表示同样含义，并把被忽略的建议视为比不显示更差。
+6. **可以多段** — 预测最多保留 3 个短段落（对齐 Codex 把 `text` 交给 `parsePromptText` 解析的做法）。输入框预览只显示第一段，胶囊会标出「2 段」，采纳时插入完整多段草稿。
+7. **推理力度默认继承** — 默认沿用父对话的 reasoning effort（Codex 的 `configuredReasoningEffort: 'inherit'`），而不是一律压到最低档。最低档虽便宜，但写出的猜测更容易泛泛。需要省成本时设 `reasoningEffort: min`。
 
 同时会清掉模型偶发的 Markdown 加粗与包裹引号，保证填入草稿的是纯文本。
 
