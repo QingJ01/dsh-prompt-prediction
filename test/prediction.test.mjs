@@ -25,7 +25,7 @@ test('normalizeConfig applies defaults and drops half a route', () => {
   assert.equal(defaults.enabled, true)
   assert.equal(defaults.provider, null)
   assert.equal(defaults.model, null)
-  assert.equal(defaults.maxOutputTokens, 1024)
+  assert.equal(defaults.maxOutputTokens, 1000)
   assert.equal(defaults.timeoutMs, 20000)
   assert.equal(defaults.promptVersion, PROMPT_VERSION)
 

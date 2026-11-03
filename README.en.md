@@ -100,7 +100,7 @@ The example overrides defaults; the complete defaults are below. Reload the prof
 | --- | --- | --- |
 | `enabled` | `true` | Enable or disable the plugin. |
 | `provider`, `model` | unset | Leave both unset to reuse the session route. Set both to use a separate prediction route with compact history. |
-| `maxOutputTokens` | `1024` | Prediction output budget, including reasoning where applicable. |
+| `maxOutputTokens` | `1000` | Prediction output budget, including reasoning where applicable. |
 | `timeoutMs` | `20000` | Model-request deadline in milliseconds; late results are discarded. |
 | `maxSuggestionChars` | `200` | Maximum UTF-16 code units; truncation preserves surrogate pairs. Not a count of displayed characters. |
 | `compactTurns` | `8` | User turns retained when using a separate route. |

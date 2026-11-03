@@ -118,7 +118,7 @@ dsh plugin --profile desktop remove dsh-prompt-prediction
 | --- | --- | --- |
 | `enabled` | `true` | 是否启用预测；设为 `false` 关闭 |
 | `provider`, `model` | 未设置 | 均不设置时沿用会话路由；必须同时设置才能使用独立预测路由 |
-| `maxOutputTokens` | `1024` | 预测输出 token 预算，适用时包括推理 token |
+| `maxOutputTokens` | `1000` | 预测输出 token 预算，适用时包括推理 token |
 | `timeoutMs` | `20000` | 模型请求超时，单位毫秒；超时后丢弃迟到结果 |
 | `maxSuggestionChars` | `200` | 建议长度上限，以 UTF-16 单元计数，截断不拆开代理对；不是屏幕显示字数 |
 | `compactTurns` | `8` | 独立路由保留的用户轮次数 |

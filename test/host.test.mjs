@@ -140,7 +140,7 @@ test('live settings schema preserves defaults and advanced route configuration',
   assert.equal(config.auditLog.get(), true)
   assert.equal(config.maxSuggestionChars.get(), 200)
   assert.equal(config.timeoutMs.get(), 20000)
-  assert.equal(config.maxOutputTokens.get(), 1024)
+  assert.equal(config.maxOutputTokens.get(), 1000)
   assert.equal(config.provider, 'custom')
   assert.equal(config.model, 'fast')
   assert.equal(config.compactTurns, 3)
