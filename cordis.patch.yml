@@ -13,8 +13,8 @@
         # keep the provider prefix cache warm.
         # provider: deepseek-official
         # model: deepseek-v4-flash
-        maxOutputTokens: 1000
+        maxOutputTokens: 8192
         timeoutMs: 20000
-        maxSuggestionChars: 200
+        maxSuggestionChars: 1000
         compactTurns: 8
         auditLog: true

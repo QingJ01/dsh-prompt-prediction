@@ -25,7 +25,8 @@ test('normalizeConfig applies defaults and drops half a route', () => {
   assert.equal(defaults.enabled, true)
   assert.equal(defaults.provider, null)
   assert.equal(defaults.model, null)
-  assert.equal(defaults.maxOutputTokens, 1000)
+  assert.equal(defaults.maxOutputTokens, 8192)
+  assert.equal(defaults.maxSuggestionChars, 1000)
   assert.equal(defaults.timeoutMs, 20000)
   assert.equal(defaults.promptVersion, PROMPT_VERSION)
 
@@ -166,7 +167,7 @@ test('parseSuggestion normalizes whitespace and trims to the cap', () => {
     ok: true,
     text: 'run the tests',
   })
-  assert.equal(parseSuggestion('{"suggestion":"a\\nb\\nc\\nd"}', { maxLines: 2 }).text, 'a\nb')
+  assert.deepEqual(parseSuggestion('{"suggestion":"a\\nb\\nc\\nd"}', { maxLines: 2 }), { ok: false, reason: 'too-many-paragraphs' })
   const long = parseSuggestion(JSON.stringify({ suggestion: 'x'.repeat(50) }), { maxSuggestionChars: 10 })
   assert.equal(long.ok, true)
   assert.equal(long.text.length, 10)
@@ -178,11 +179,11 @@ test('parseSuggestion rejects the model declining', () => {
 
 test('suggestion truncation preserves complete Unicode surrogate pairs', () => {
   for (const character of ['😀', '𠮷']) {
-    const split = parseSuggestion(JSON.stringify({ suggestion: 'a'.repeat(199) + character }))
-    assert.deepEqual(split, { ok: true, text: 'a'.repeat(199) })
+    const split = parseSuggestion(JSON.stringify({ suggestion: 'a'.repeat(999) + character }))
+    assert.deepEqual(split, { ok: true, text: 'a'.repeat(999) })
     assert.ok(split.text.isWellFormed())
-    const fits = parseSuggestion(JSON.stringify({ suggestion: 'a'.repeat(198) + character + 'x' }))
-    assert.equal(fits.text, 'a'.repeat(198) + character)
+    const fits = parseSuggestion(JSON.stringify({ suggestion: 'a'.repeat(998) + character + 'x' }))
+    assert.equal(fits.text, 'a'.repeat(998) + character)
     assert.ok(fits.text.isWellFormed())
     assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: character }), { maxSuggestionChars: 1 }), {
       ok: false, reason: 'blank-suggestion',
@@ -322,8 +323,7 @@ test('a multi-paragraph guess keeps its paragraphs and respects the cap', () => 
   assert.equal(two.text, '先跑测试\n再提交 PR', 'acceptance inserts the whole draft')
 
   const many = parseSuggestion(JSON.stringify({ suggestion: '一\n二\n三\n四\n五' }), { maxLines: 3 })
-  assert.equal(many.text, '一\n二\n三')
-  assert.equal(many.text.split('\n').length, 3)
+  assert.deepEqual(many, { ok: false, reason: 'too-many-paragraphs' })
 
   // Blank paragraphs never produce empty lines in the composer.
   const sparse = parseSuggestion(JSON.stringify({ suggestion: 'a\n\n\n b ' }))
@@ -351,4 +351,89 @@ test('the instruction tells the model when abstaining is expected', () => {
   assert.match(instruction, /generic filler/)
   assert.match(instruction, /worse than no suggestion/)
   assert.match(instruction, /short paragraphs/)
+})
+
+
+test('normalization cannot hide a reserved command or reference prefix', () => {
+  for (const text of ['**/help**', '**@file**', '“**/compact**”', '**“@file”**', '`/help`']) {
+    assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: text })), {
+      ok: false, reason: 'reserved-lead',
+    }, text)
+  }
+})
+
+test('normalization preserves exact identifiers and mathematical operators', () => {
+  for (const text of [
+    'rename __init__.py to __main__.py', '__init__',
+    'use x ** 2', 'change `maxOutputTokens` to 8192',
+    'run tests for foo__bar and x_y',
+  ]) {
+    assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: text })), { ok: true, text })
+  }
+  assert.equal(parseSuggestion(JSON.stringify({ suggestion: '**“run tests”**' })).text, 'run tests')
+})
+
+test('credential detection accepts budgets and configuration identifiers', () => {
+  for (const text of [
+    'increase maxOutputTokens: 8192', 'increase the token budget to 8192',
+    '请将 token 预算调到 8192', 'token budget: 8192',
+    '修复 password 输入框，在 8080 端口测试', '验证码那步我自己处理，先检查 3000 端口',
+  ]) {
+    assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: text })), { ok: true, text })
+  }
+})
+
+test('credential detection rejects assignments and numeric-only OTP guesses', () => {
+  for (const text of [
+    'my password is sample-value', 'password=sample-value', '密码是示例值',
+    '验证码为 123456', '验证码 123456', 'OTP is 123456', '123456', '000012',
+    'set the API key: sample-value', 'use sk-' + 'example'.repeat(4),
+  ]) {
+    assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: text })), {
+      ok: false, reason: 'credential-shaped',
+    }, text)
+  }
+})
+
+test('repetition comparison preserves code, signs, case and option syntax', () => {
+  for (const [previous, text] of [
+    ['set x=1', 'set x=-1'], ['使用 C', '使用 C++'],
+    ['set foo', 'set Foo'], ['run --no-cache', 'run --cache'],
+    ['use foo_bar', 'use foobar'],
+  ]) {
+    assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: text }), { lastUserText: previous }), {
+      ok: true, text,
+    })
+  }
+  assert.equal(parseSuggestion(JSON.stringify({ suggestion: 'run the tests' }), {
+    lastUserText: ' run   the tests! ',
+  }).reason, 'repeated-user')
+})
+
+test('anchors exclude explicit synthetic provenance and keep legacy user turns', () => {
+  const row = (text, source) => ({ ...textMessage('user', text), ...(source ? { source } : {}) })
+  assert.deepEqual(styleExemplars([
+    row('legacy human request'), row('run tests', { kind: 'user' }),
+    row('injected notice', { kind: 'inject' }), row('tool context', { kind: 'tool' }),
+    row('system reminder', { kind: 'system' }),
+  ]), ['legacy human request', 'run tests'])
+})
+
+test('anchor clipping preserves surrogate pairs at either side of the boundary', () => {
+  for (const character of ['😀', '𠮷']) {
+    const split = styleExemplars([textMessage('user', 'a'.repeat(119) + character)])[0]
+    assert.equal(split, 'a'.repeat(119) + '…')
+    assert.equal(split.isWellFormed(), true)
+    const fits = styleExemplars([textMessage('user', 'a'.repeat(118) + character + 'x')])[0]
+    assert.equal(fits, 'a'.repeat(118) + character + '…')
+    assert.equal(fits.isWellFormed(), true)
+  }
+})
+
+test('paragraph overflow is rejected rather than silently losing a condition', () => {
+  const text = 'run tests\r\ncheck types\rreview changes\nonly commit if all pass'
+  assert.deepEqual(parseSuggestion(JSON.stringify({ suggestion: text })), {
+    ok: false, reason: 'too-many-paragraphs',
+  })
+  assert.equal(parseSuggestion(JSON.stringify({ suggestion: 'one\r\ntwo\rthree' })).text, 'one\ntwo\nthree')
 })

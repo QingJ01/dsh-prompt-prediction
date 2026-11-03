@@ -562,6 +562,31 @@ test('Tab fills the draft with the prediction and reports acceptance', async () 
   assert.equal(accepted.turnSeq, 42)
 })
 
+for (const key of ['Tab', 'ArrowRight']) {
+  test(`${key} previews the first line and accepts the complete multiline prediction`, async () => {
+    const prediction = '先跑一遍完整测试。\n把失败的用例修掉后再提交。\n\n最后说明验证结果。'
+    const harness = await mountOverlay({ prediction })
+    try {
+      const [ghost, announcement] = harness.repaint().props.children
+      assert.equal(ghost.props.children[0].props.children, '先跑一遍完整测试。')
+      assert.equal(ghost.props.children[1].props.children, 'Tab 填入 · 3 段')
+      assert.equal(ghost.props.children[0].props.children.includes('\n'), false)
+      assert.ok(announcement.props.children.includes(prediction), 'the accessible description retains every line')
+      const event = key === 'Tab' ? harness.pressTab() : harness.pressKey(key)
+      assert.equal(event.prevented, true)
+      assert.equal(event.stopped, true, 'the key cannot reach composer submission handlers')
+      assert.equal(harness.insertions.length, 1)
+      assert.equal(harness.insertions[0].text, prediction, 'the insertion receives all lines and blank paragraphs')
+      const accepted = harness.feedback.filter(item => item.action === 'accepted')
+      assert.equal(accepted.length, 1)
+      assert.equal(accepted[0].text, prediction)
+      assert.equal(accepted[0].turnSeq, 42)
+    } finally {
+      harness.runtime.cleanupAll()
+    }
+  })
+}
+
 test('mounting reports a heartbeat so the host can see the bundle loaded', async () => {
   const harness = await mountOverlay()
   assert.ok(harness.feedback.some((item) => item.action === 'mounted'), 'a mounted overlay announces itself')

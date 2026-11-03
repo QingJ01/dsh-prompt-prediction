@@ -138,9 +138,9 @@ test('live settings schema preserves defaults and advanced route configuration',
   const config = Config({ provider: 'custom', model: 'fast', compactTurns: 3 })
   assert.equal(config.enabled.get(), true)
   assert.equal(config.auditLog.get(), true)
-  assert.equal(config.maxSuggestionChars.get(), 200)
+  assert.equal(config.maxSuggestionChars.get(), 1000)
   assert.equal(config.timeoutMs.get(), 20000)
-  assert.equal(config.maxOutputTokens.get(), 1000)
+  assert.equal(config.maxOutputTokens.get(), 8192)
   assert.equal(config.provider, 'custom')
   assert.equal(config.model, 'fast')
   assert.equal(config.compactTurns, 3)
@@ -671,4 +671,40 @@ test('one oversized provider block cannot bypass the response budget', async () 
   } })
   await harness.call('/api/dsh-prompt-prediction/state', { query: { sessionId: session.id } })
   assert.equal((await settle(harness.call, session.id)).reason, 'response-too-large')
+})
+
+
+test('prediction uses human provenance for style anchors and repeated-user rejection', async () => {
+  const human = { ...textMessage('user', 'run the tests'), source: { kind: 'user' } }
+  const injected = { ...textMessage('user', 'synthetic environment notice'), source: { kind: 'inject' } }
+  const session = makeSession({ messages: [human, injected, textMessage('assistant', 'The build is fixed.')] })
+  const harness = makeHarness({ session, stream: streamOf(JSON.stringify({ suggestion: 'run the tests' })) })
+  await harness.call('/api/dsh-prompt-prediction/state', { query: { sessionId: session.id } })
+  const state = await settle(harness.call, session.id)
+  assert.equal(state.status, 'none')
+  assert.equal(state.reason, 'repeated-user')
+  const request = harness.calls[0].options
+  const instruction = request.messages.at(-1).content[0].text
+  assert.ok(instruction.includes('run the tests'))
+  assert.ok(!instruction.includes('synthetic environment notice'))
+  assert.ok(request.messages.includes(injected), 'synthetic context remains in history, not in style anchors')
+  assert.equal(harness.calls[0].prepared.maxTokens, 8192)
+  assert.match(instruction, /1000 characters/)
+})
+
+
+test('live reasoning-effort changes invalidate the previous prediction', async () => {
+  const session = makeSession()
+  const config = Config({ auditLog: false })
+  const harness = makeHarness({ session, config, stream: streamOf('{"suggestion":"run tests"}') })
+  const first = await settle(harness.call, session.id)
+  assert.equal(first.status, 'ready')
+  config.reasoningEffort[Symbol.for('cosmokit.volatile.write')]('min')
+  harness.emit('loader/volatile-update', [['reasoningEffort']])
+  const next = await settle(harness.call, session.id)
+  assert.equal(next.status, 'ready')
+  assert.ok(next.rev > first.rev)
+  assert.equal(harness.calls.length, 2)
+  const model = { reasoning: { efforts: [{ id: 'low' }, { id: 'high' }] } }
+  assert.equal(harness.calls.at(-1).configure({ reasoningEffort: 'high' }, model).reasoningEffort, 'low')
 })

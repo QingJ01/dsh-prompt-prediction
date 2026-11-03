@@ -10,6 +10,7 @@ import { createHostFixture } from './support/dsh-runtime.mjs'
 import { realInputBundle, realInputLoader, realInputSetup } from './support/real-input-browser.mjs'
 
 const assets = '/tmp/pp-review-browser'
+const multilinePrediction = '这条建议很长，用于验证窄窗口时只占一行，不会挤进下面的工具栏，也不会覆盖 Tab 提示。\n把失败的用例修掉后再提交。\n最后说明验证结果。'
 let html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><style>
 body{margin:0;background:#141414;color:#eee;font:18px Arial,sans-serif;padding:48px}
 [data-composer-card]{position:relative;background:#2a2a2a;border-radius:24px;padding:24px;max-width:980px}
@@ -18,7 +19,7 @@ p{margin:0} [data-composer-placeholder]{position:absolute;top:0;left:0;color:#77
 .tools{margin-top:24px;display:flex;justify-content:space-between;color:#bbb}button{background:transparent;color:inherit;border:0;font:inherit}
 </style><style data-plugin-css="dsh-prompt-prediction/style">/* existing stylesheet from an older client */</style><div data-composer-card><div id="overlay"></div><div class="grow"><div data-composer-input contenteditable="true" data-phase="plain" data-placeholder="发消息或创建任务 / 调用指令，@ 文件或其它"><p><br></p></div><div data-composer-placeholder aria-hidden="true">发消息或创建任务 / 调用指令，@ 文件或其它</div></div><div class="tools"><button id="toolbar">＋　完全权限</button><span>GPT-6.1-Sol</span></div></div>
 <script src="/react.js"></script><script src="/react-dom.js"></script><script>
-window.feedback=[];window.inserts=[];window.predictionText='先跑一遍完整测试。\\n把失败的用例修掉后再提交。';
+window.feedback=[];window.inserts=[];window.predictionText=${JSON.stringify(multilinePrediction)};
 let plugin;window.__ModuleLoader__={load:r=>{plugin=r.factory(n=>{if(n==='react')return React;throw Error(n)})}};
 </script><script src="/client.js"></script><script>
 let Component;plugin.apply({inject(){},slots:{inject:(_,fn)=>fn(),register:(_,c)=>{Component=c}}});
@@ -41,7 +42,7 @@ window.setSession=id=>{sessionId=id;render()};window.unmount=()=>ReactDOM.flushS
 const integrated = process.argv.includes('--integrated')
 let hostFixture
 if (integrated) {
-  hostFixture = await createHostFixture({ suggestionText: '这条建议很长，用于验证窄窗口时只占一行，不会挤进下面的工具栏，也不会覆盖 Tab 提示。' })
+  hostFixture = await createHostFixture({ suggestionText: multilinePrediction })
   const loaderStart = html.indexOf('let plugin;')
   const loaderEnd = html.indexOf('</script><script src="/client.js">', loaderStart)
   html = html.slice(0, loaderStart) + 'let plugin;'+realInputLoader + html.slice(loaderEnd)
@@ -125,6 +126,8 @@ try {
   await command('Emulation.setDeviceMetricsOverride', { width: 1100, height: 370, deviceScaleFactor: 1, mobile: false })
   await command('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` })
   await waitFor(`!!document.querySelector('[data-dsh-prediction="ghost"]')`)
+  assert.equal(await evaluate(`document.querySelector('[data-dsh-prediction="ghost"]').firstElementChild.textContent`), multilinePrediction.split('\n')[0])
+  assert.equal(await evaluate(`document.querySelector('[data-dsh-prediction="ghost"]').lastElementChild.textContent.includes('3 段')`), true, 'hint counts the three non-empty paragraphs')
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-composer-placeholder]')).visibility`), 'hidden')
   assert.equal(await evaluate(`document.querySelector('[contenteditable]').getAttribute('data-placeholder')`), '发消息或创建任务 / 调用指令，@ 文件或其它')
   // Reproduce the original CSS assumption: hiding only editor ::before leaves
@@ -215,11 +218,42 @@ try {
     await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
     assert.equal(await evaluate('sent.length'), 1)
   }
-  // Multi-paragraph guesses preview the first paragraph and accept all of them.
-  await evaluate(`changeDraft('')`)
-  await waitFor(`!!document.querySelector('[data-dsh-prediction="ghost"]')`)
-  await evaluate(`{const card=document.querySelector('[data-composer-card]');window.__origFetch=window.fetch}`)
-  assert.equal(await evaluate(`document.querySelector('[data-dsh-prediction="ghost"]').textContent.includes(String.fromCharCode(10))`), false, 'preview never renders a raw newline')
+  // Return from the single-line session before checking actual multiline data.
+  // Otherwise a no-newline assertion would pass without ever testing the feature.
+  await evaluate(`changeDraft('');setSession('first')`)
+  const expectedMultiline = JSON.stringify(multilinePrediction)
+  const expectedFirstLine = JSON.stringify(multilinePrediction.split('\n')[0])
+  for (const [key, code, windowsVirtualKeyCode] of [['Tab', 'Tab', 9], ['ArrowRight', 'ArrowRight', 39]]) {
+    await waitFor(`document.querySelector('[data-dsh-prediction="ghost"]')?.firstElementChild.textContent===${expectedFirstLine}`)
+    assert.equal(await evaluate(`document.querySelector('[data-dsh-prediction="ghost"]').textContent.includes(String.fromCharCode(10))`), false, 'preview never renders a raw newline')
+    const before = await evaluate('({inserts:inserts.length,accepted:feedback.filter(x=>x.action==="accepted").length,sent:window.sent?.length})')
+    await evaluate(`document.querySelector('[contenteditable]').focus()`)
+    await command('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode })
+    await command('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode })
+    await waitFor(`inserts.length===${before.inserts + 1}`)
+    assert.equal(await evaluate('inserts.at(-1)'), multilinePrediction, `${key} inserts all three paragraphs`)
+    await waitFor(`feedback.filter(x=>x.action==='accepted').length===${before.accepted + 1}`)
+    assert.equal(await evaluate(`feedback.filter(x=>x.action==='accepted').at(-1).text`), multilinePrediction, `${key} reports the full accepted text`)
+    await waitFor(`!document.querySelector('[data-dsh-prediction="ghost"]')`)
+    if (integrated) {
+      assert.equal(await evaluate('realShell.snapshot.draft'), multilinePrediction, `${key} publishes all lines through the real DSH shell`)
+      assert.equal(await evaluate(`document.querySelector('[contenteditable]').innerText`), multilinePrediction, `${key} renders every line in Lexical`)
+      assert.equal(await evaluate('sent.length'), before.sent, `${key} leaves the result as an unsent draft`)
+      assert.equal(await evaluate(`feedback.filter(x=>x.action==='accepted').at(-1).serverStatus`), 200)
+      await evaluate('undoDraft()')
+      await waitFor("realShell.snapshot.draft===''")
+      assert.equal(await evaluate(`document.querySelector('[contenteditable]').innerText.trim()`), '', `${key} acceptance is undone in one operation`)
+      await evaluate('redoDraft()')
+      await waitFor(`realShell.snapshot.draft===${expectedMultiline}`)
+      assert.equal(await evaluate(`document.querySelector('[contenteditable]').innerText`), multilinePrediction, `${key} redo restores every line`)
+      assert.equal(await evaluate('sent.length'), before.sent, 'history does not submit')
+      assert.equal(await evaluate('inserts.length'), before.inserts + 1, 'history does not call insertion again')
+      assert.equal(await evaluate(`feedback.filter(x=>x.action==='accepted').length`), before.accepted + 1, 'history does not report another acceptance')
+    } else {
+      assert.equal(await evaluate(`document.querySelector('[contenteditable]').textContent`), multilinePrediction)
+    }
+    await evaluate(`changeDraft('')`)
+  }
   // Whitespace is user input, not an empty draft.
   await evaluate(`changeDraft(' ')`)
   await new Promise(resolve => setTimeout(resolve, 50))
@@ -233,7 +267,7 @@ try {
   await waitFor(`!!document.querySelector('[data-dsh-prediction="ghost"]')`)
   await evaluate('unmount()')
   assert.equal(await evaluate(`document.querySelector('[data-composer-card]').hasAttribute('data-dsh-pp-active')`), false)
-  console.log((integrated ? 'INTEGRATED real DSH HTTP + adapter boundary + Lexical + input actions: ' : '') + 'PASS: real Chromium/React DOM stylesheet update, placeholder, narrow layout, replacement, IME, session isolation, Tab/ArrowRight draft insertion, whitespace, disabled state and cleanup')
+  console.log((integrated ? 'INTEGRATED real DSH HTTP + adapter boundary + Lexical + input actions + multiline undo/redo: ' : '') + 'PASS: real Chromium/React DOM stylesheet update, placeholder, narrow layout, replacement, IME, session isolation, multiline first-line preview and full Tab/ArrowRight draft insertion, whitespace, disabled state and cleanup')
 } finally {
   ws?.close()
   chrome.kill('SIGTERM')

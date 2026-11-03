@@ -100,9 +100,9 @@ The example overrides defaults; the complete defaults are below. Reload the prof
 | --- | --- | --- |
 | `enabled` | `true` | Enable or disable the plugin. |
 | `provider`, `model` | unset | Leave both unset to reuse the session route. Set both to use a separate prediction route with compact history. |
-| `maxOutputTokens` | `1000` | Prediction output budget, including reasoning where applicable. |
+| `maxOutputTokens` | `8192` | Prediction output budget, including reasoning where applicable. |
 | `timeoutMs` | `20000` | Model-request deadline in milliseconds; late results are discarded. |
-| `maxSuggestionChars` | `200` | Maximum UTF-16 code units; truncation preserves surrogate pairs. Not a count of displayed characters. |
+| `maxSuggestionChars` | `1000` | Maximum UTF-16 code units; truncation preserves surrogate pairs. Not a count of displayed characters. |
 | `compactTurns` | `8` | User turns retained when using a separate route. |
 | `maxHistoryChars` | `0` | Ordinary-text history guard; `0` disables it. This does not measure the full serialized request size. |
 | `eagerWindowMs` | `1800000` | Milliseconds after the last browser interaction during which a session may generate background predictions (30 minutes). |
@@ -119,24 +119,24 @@ A separate route can be configured with your own provider and model identifiers:
     compactTurns: 8
 ```
 
-Set both route fields: supplying only one falls back to the session route. DSH validates `maxOutputTokens`, `timeoutMs` and `maxSuggestionChars` as positive integers; timeout must not exceed `2147483647` ms. Replace any legacy zero, fractional or string values with valid numbers. `compactTurns` and `eagerWindowMs` are still rounded down, with invalid values or values below 1 using defaults. Use `enabled: false`, not `timeoutMs: 0`, to disable prediction. Increasing `maxSuggestionChars` does not change the instruction's 200-character generation limit.
+Set both route fields: supplying only one falls back to the session route. DSH validates `maxOutputTokens`, `timeoutMs` and `maxSuggestionChars` as positive integers; timeout must not exceed `2147483647` ms. Replace any legacy zero, fractional or string values with valid numbers. `compactTurns` and `eagerWindowMs` are still rounded down, with invalid values or values below 1 using defaults. Use `enabled: false`, not `timeoutMs: 0`, to disable prediction. `maxSuggestionChars` controls both the limit stated in the model instruction and the accepted output length; the default is `1000` UTF-16 code units.
 
 ## Prediction quality
 
-Three constraints go into the request, and one local filter runs on the way back:
+The request constrains prediction behavior, and local filters check the result:
 
-1. **Sound like you** — the user's last three messages (skipping `/` and `@` payloads) are included as style anchors for length and vocabulary. Those messages are already in the model-visible history, so no extra content is disclosed.
+1. **Sound like you** — the user's last three human messages (excluding explicit synthetic sources and skipping `/` and `@` payloads) are included as style anchors for length and vocabulary. Those messages are already in the model-visible history, so no extra content is disclosed.
 2. **Prefer one sentence** — real follow-ups are usually short; two clauses are only expected when the user's own messages are that long.
-3. **Do not restate the last message** — a suggestion identical to the user's previous message, ignoring punctuation and whitespace, is dropped (`repeated-user`).
-4. **Never invent credentials** — the instruction forbids verification codes, one-time passwords, passwords, API keys and tokens, and a locally detected match is dropped (`credential-shaped`). This came from a real case: with npm 2FA under discussion, the model returned `验证码：123456`.
+3. **Do not restate the last message** — a suggestion identical to the user's previous message, normalizing whitespace and ignoring sentence-ending punctuation while preserving code symbols and case, is dropped (`repeated-user`).
+4. **Never invent credentials** — the instruction forbids verification codes, one-time passwords, passwords, API keys and tokens, and local heuristics drop common credential assignments, known token shapes and numeric-only 4–8-digit guesses (`credential-shaped`). These checks cannot detect every credential. This came from a real case: with npm 2FA under discussion, the model returned `验证码：123456`.
 
-5. **Abstaining is expected** — the instruction spells out when to return `null`: the assistant asked an open question needing facts only the user has, the next step is the user's decision, the thread is just greetings, or the best guess is filler such as "continue" or "ok". Codex models the same state as `text: null` and treats an ignored suggestion as worse than none.
-6. **Paragraphs are allowed** — up to three short paragraphs survive (mirroring Codex, which feeds `text` through `parsePromptText`). The composer preview shows the first paragraph and the pill reports "2 paragraphs"; acceptance inserts the whole draft.
-7. **Reasoning effort inherits** — the prediction follows the parent conversation's effort by default (Codex's `configuredReasoningEffort: 'inherit'`) instead of being forced to the cheapest tier, which produced vaguer guesses. Set `reasoningEffort: min` to trade quality for cost.
+5. **Abstaining is expected** — the instruction spells out when to return `null`: the assistant asked an open question needing facts only the user has, the next step is the user's decision, the thread is just greetings, or the best guess is filler such as "continue" or "ok". The Codex client represents abstention as `text: null`; this plugin also allows `null`.
+6. **Paragraphs are allowed** — up to three non-empty short paragraphs are allowed. Longer predictions are rejected entirely so later conditions are not silently lost. The composer preview shows the first paragraph and the pill reports "2 paragraphs"; acceptance inserts the whole draft.
+7. **Reasoning effort inherits** — the prediction follows the parent conversation's effort by default (Codex's `configuredReasoningEffort: 'inherit'`) instead of forcing the lowest tier. Effort can affect cost and latency; its effect on accuracy has not been measured. Set `reasoningEffort: min` to request the lowest tier.
 
-Stray Markdown emphasis and wrapping quotes are stripped so the draft is plain text.
+Only whole-message bold decoration or wrapping quotes are stripped. Identifiers such as `__init__.py`, exponent operators and inline code remain intact. The final text is checked for reserved command/reference prefixes.
 
-These rules improve how often a suggestion is *taken*, not the accuracy of the guess: the model can still be wrong, so review before sending.
+These rules reduce invalid or corrupted suggestions. No controlled evaluation has yet established improved accuracy or acceptance rates; review each suggestion before sending.
 
 ## Model use and local data
 

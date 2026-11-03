@@ -127,8 +127,14 @@ test('the detail page registers native settings with validated staged fields', (
   const settings = registrations.find(item => item.descriptor.name === 'plugins.bundle.config')
   assert.equal(settings.descriptor.key, 'dsh-prompt-prediction')
   assert.deepEqual([...specs.map(spec => spec.field)],
-    ['enabled', 'maxSuggestionChars', 'timeoutMs', 'maxOutputTokens', 'auditLog'])
+    ['enabled', 'maxSuggestionChars', 'timeoutMs', 'maxOutputTokens', 'reasoningEffort', 'auditLog'])
   assert.equal(specs[0].parse('false').value, false)
+  const effort = specs.find(item => item.field === 'reasoningEffort')
+  assert.equal(effort.format(undefined), 'inherit')
+  assert.equal(effort.parse('').kind, 'clear')
+  assert.equal(effort.parse('  min ').value, 'min')
+  assert.equal(effort.parse('xhigh').value, 'xhigh')
+  assert.equal(effort.parse('not an effort'), undefined)
   for (const field of ['maxSuggestionChars', 'timeoutMs', 'maxOutputTokens']) {
     const spec = specs.find(item => item.field === field)
     for (const invalid of ['0', '-1', '0.5', 'Infinity', 'NaN']) assert.equal(spec.parse(invalid), undefined)
@@ -147,6 +153,10 @@ test('the detail page registers native settings with validated staged fields', (
   assert.equal(rendered.props.labels.save, '保存')
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...(node.children ?? []).flat(Infinity).flatMap(nodes)]
+  const effortField = nodes(rendered).find(node => node.props?.id === 'prompt-prediction-setting-reasoningEffort')
+  assert.equal(effortField.props.numeric, false)
+  assert.equal(effortField.props.label, '预测推理力度')
+  assert.match(effortField.props.hint, /inherit/)
   const switches = nodes(rendered).filter(node => node.type === 'native-switch')
   assert.deepEqual(switches.map(node => node.props.label), ['启用预测', '本地审计日志'])
   assert.ok(switches.every(node => node.props.checked && !node.props.disabled))
