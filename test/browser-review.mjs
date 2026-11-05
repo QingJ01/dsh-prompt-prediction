@@ -141,7 +141,7 @@ try {
   const out = new URL('../artifacts/review/', import.meta.url)
   await mkdir(out, { recursive: true })
   await writeFile(new URL('ghost-fixed.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
-  const aligned = `(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]')?.getBoundingClientRect();const e=document.querySelector('[contenteditable]');const p=e.firstElementChild.getBoundingClientRect();const r=e.getBoundingClientRect();return !!g&&Math.abs(g.left-p.left)<1&&Math.abs(g.top-p.top)<1&&g.right<=r.right+1})()`
+  const aligned = `(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]')?.getBoundingClientRect();const e=document.querySelector('[contenteditable]');const p=(e.firstElementChild??e).getBoundingClientRect();const r=e.getBoundingClientRect();return !!g&&Math.abs(g.left-p.left)<1&&Math.abs(g.top-p.top)<1&&g.right<=r.right+1})()`
   await waitFor(aligned)
   for (const style of [
     'transform:translateZ(0)', 'filter:opacity(1)', 'contain:paint', 'will-change:transform',
