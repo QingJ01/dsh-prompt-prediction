@@ -14,7 +14,7 @@ This is a DSH plugin, not a standalone chat app or browser extension. No build s
 
 ## Requirements
 
-- Declared DSH range: `>=0.2.1-rc.5 <0.3.0`. The integration targets `0.2.1-rc.5`; this range does not mean every release has been tested.
+- Declared DSH range: `>=0.2.1-rc.5 <0.3.0`. Runtime regressions cover `0.2.1-rc.5` and `0.2.2-rc.1`; this is not full Desktop validation or coverage of every release.
 - Node.js 24 or newer for development and tests.
 - DSH installed with its `dsh` CLI available, and a working model route in the target profile's session.
 
@@ -209,9 +209,17 @@ DSH_EXTRACTED_ROOT=/path/to/extracted-dsh node test/browser-review.mjs --integra
 
 This loads the installed DSH's real HTTP bridge, model provenance boundary, Lexical editor, input shell and keymap. It checks Tab/ArrowRight insertion, no automatic send, undo/redo, stale-revision refusal and preserving Enter behavior. Model output and owner identity are deterministic fixtures; unrelated business services use test substitutes. It does not send messages from an existing DSH conversation. DSH source code and extracted application assets are not distributed in this repository.
 
+For DSH `0.2.2-rc.1`, also check the shipped conversation and input-bar CSS:
+
+```sh
+DSH_EXTRACTED_ROOT=/path/to/extracted-dsh node test/browser-review.mjs --integrated --native-layout
+```
+
+This adds the official active-session sticky composer, scrolling, hero-to-active transitions and narrow viewport alignment. The active container now has `will-change: transform`, which makes viewport offsets incorrect for a nested fixed ghost; composer-local absolute positioning avoids that mismatch. The CSS and class mappings are read from the installed package, not copied into the repository. When checking DSH updates, consult official prereleases and npm's `next` tag as well as `latest`.
+
 ## Compatibility limits
 
-- Some integration points are specific to DSH `0.2.1-rc.5`; later releases can change them.
+- Some integration points use DSH internals. Regressions cover `0.2.1-rc.5` and `0.2.2-rc.1`; later releases can still change them.
 - Plan and queue suppression are client-side. Recently watched sessions can still incur background prediction cost within `eagerWindowMs`.
 - The overlay cannot render file-reference chips inside suggestions.
 - Catch-up uses the session event snapshot; negative results are cached to avoid scanning on every poll.

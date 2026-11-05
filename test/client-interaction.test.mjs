@@ -299,6 +299,7 @@ async function mountOverlay({
   planState = undefined,
   describedBy = null,
   anchorRect = null,
+  inputPhase = 'plain',
 } = {}) {
   const source = readFileSync(clientPath, 'utf8')
   const head = createElement('head')
@@ -447,7 +448,7 @@ async function mountOverlay({
       return true
     },
   }
-  const useInput = (selector) => selector({ draft, attachmentIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [] })
+  const useInput = (selector) => selector({ draft, attachmentIds: [], draftRev: 0, phase: inputPhase, occurrences: [], queue: [] })
 
   let mounted = null
 
@@ -735,6 +736,14 @@ test('a non-empty draft keeps the ghost hidden and Tab alone', async () => {
   assert.equal(event.prevented, false)
   assert.equal(harness.feedback.filter((item) => item.action === 'shown').length, 0)
   assert.ok(harness.feedback.some((item) => item.action === 'mounted'), 'the overlay still announces itself')
+})
+
+test('the DSH sending phase keeps an empty draft locked against prediction acceptance', async () => {
+  const harness = await mountOverlay({ inputPhase: 'sending' })
+  assert.equal(harness.repaint().props.children[0], null)
+  const event = harness.pressTab()
+  assert.equal(event.prevented, false)
+  assert.equal(harness.insertions.length, 0)
 })
 
 test('an inactive composer explains itself instead of staying silent', async () => {
