@@ -298,6 +298,7 @@ async function mountOverlay({
   sessionState = { running: false, openState: 'open' },
   planState = undefined,
   describedBy = null,
+  anchorRect = null,
 } = {}) {
   const source = readFileSync(clientPath, 'utf8')
   const head = createElement('head')
@@ -456,6 +457,7 @@ async function mountOverlay({
     const inner = runtime.render(outer.element.type, outer.element.props)
     if (mounted === null) {
       mounted = createElement('div')
+      if (anchorRect !== null) mounted.rect = anchorRect
       anchor.appendChild(mounted)
       if (inner.element.props.ref !== null && typeof inner.element.props.ref === 'object') {
         inner.element.props.ref.current = mounted
@@ -609,6 +611,18 @@ test('the ghost falls back to padding math when no line box exists', async () =>
   assert.equal(shown.box.left, 435 + 12)
   assert.equal(shown.box.top, 676 + 10)
   assert.equal(shown.box.width, 686 - 24)
+})
+
+test('the ghost uses local coordinates inside a translated and scaled composer', async () => {
+  const harness = await mountOverlay({
+    firstLine: { left: 460, top: 690, width: 640, right: 1100 },
+    anchorRect: { left: 420, top: 650, width: 0.8, height: 0.5 },
+  })
+  const ghost = harness.repaint().props.children[0]
+  assert.equal(ghost.props.style.position, 'absolute')
+  assert.equal(ghost.props.style.left, '50px')
+  assert.equal(ghost.props.style.top, '80px')
+  assert.equal(Number.parseFloat(ghost.props.style.width), (1121 - 12 * 0.8 - 460) / 0.8)
 })
 
 test('a prediction is reported once, not once per poll', async () => {

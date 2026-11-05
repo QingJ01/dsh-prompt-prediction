@@ -17,7 +17,7 @@ body{margin:0;background:#141414;color:#eee;font:18px Arial,sans-serif;padding:4
 .grow{position:relative;min-height:64px} [contenteditable]{outline:none;line-height:28px;min-height:56px}
 p{margin:0} [data-composer-placeholder]{position:absolute;top:0;left:0;color:#777;pointer-events:none;line-height:28px}
 .tools{margin-top:24px;display:flex;justify-content:space-between;color:#bbb}button{background:transparent;color:inherit;border:0;font:inherit}
-</style><style data-plugin-css="dsh-prompt-prediction/style">/* existing stylesheet from an older client */</style><div data-composer-card><div id="overlay"></div><div class="grow"><div data-composer-input contenteditable="true" data-phase="plain" data-placeholder="发消息或创建任务 / 调用指令，@ 文件或其它"><p><br></p></div><div data-composer-placeholder aria-hidden="true">发消息或创建任务 / 调用指令，@ 文件或其它</div></div><div class="tools"><button id="toolbar">＋　完全权限</button><span>GPT-6.1-Sol</span></div></div>
+</style><style data-plugin-css="dsh-prompt-prediction/style">/* existing stylesheet from an older client */</style><div id="stage"><div data-composer-card><div id="overlay"></div><div class="grow"><div data-composer-input contenteditable="true" data-phase="plain" data-placeholder="发消息或创建任务 / 调用指令，@ 文件或其它"><p><br></p></div><div data-composer-placeholder aria-hidden="true">发消息或创建任务 / 调用指令，@ 文件或其它</div></div><div class="tools"><button id="toolbar">＋　完全权限</button><span>GPT-6.1-Sol</span></div></div></div>
 <script src="/react.js"></script><script src="/react-dom.js"></script><script>
 window.feedback=[];window.inserts=[];window.predictionText=${JSON.stringify(multilinePrediction)};
 let plugin;window.__ModuleLoader__={load:r=>{plugin=r.factory(n=>{if(n==='react')return React;throw Error(n)})}};
@@ -141,6 +141,23 @@ try {
   const out = new URL('../artifacts/review/', import.meta.url)
   await mkdir(out, { recursive: true })
   await writeFile(new URL('ghost-fixed.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+  const aligned = `(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]')?.getBoundingClientRect();const e=document.querySelector('[contenteditable]');const p=e.firstElementChild.getBoundingClientRect();const r=e.getBoundingClientRect();return !!g&&Math.abs(g.left-p.left)<1&&Math.abs(g.top-p.top)<1&&g.right<=r.right+1})()`
+  await waitFor(aligned)
+  for (const style of [
+    'transform:translateZ(0)', 'filter:opacity(1)', 'contain:paint', 'will-change:transform',
+  ]) {
+    await evaluate(`document.querySelector('[data-composer-card]').style.cssText=${JSON.stringify(style)}`)
+    await waitFor(aligned)
+  }
+  await evaluate(`document.getElementById('stage').style.cssText='transform:translate(18px,80px) scale(.8,.9);transform-origin:top left'`)
+  await waitFor(aligned)
+  await writeFile(new URL('ghost-transformed.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+  await evaluate(`{const row=document.createElement('div');row.id='accessory';row.style.height='46px';document.querySelector('.grow').before(row)}`)
+  await waitFor(aligned)
+  await evaluate(`document.body.style.minHeight='1800px';scrollTo(0,90)`)
+  await waitFor(aligned)
+  await evaluate(`scrollTo(0,0);document.body.style.minHeight='';document.getElementById('accessory').remove();document.getElementById('stage').style.cssText='';document.querySelector('[data-composer-card]').style.cssText=''`)
+  await waitFor(aligned)
   await command('Emulation.setDeviceMetricsOverride', { width: 420, height: 370, deviceScaleFactor: 1, mobile: false })
   await new Promise(resolve => setTimeout(resolve, 100))
   assert.equal(await evaluate(`(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]');const b=g.getBoundingClientRect();const t=document.querySelector('.tools').getBoundingClientRect();const hint=g.lastElementChild.getBoundingClientRect();return b.height<=parseFloat(getComputedStyle(g).lineHeight)+1&&b.bottom<=t.top&&b.right<=innerWidth&&hint.right<=b.right+1})()`), true)
