@@ -7,7 +7,7 @@ import { readFile, mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHostFixture } from './support/dsh-runtime.mjs'
-import { realInputBundle, realInputLoader, realInputSetup } from './support/real-input-browser.mjs'
+import { realComposerLayout, realInputBundle, realInputLoader, realInputSetup } from './support/real-input-browser.mjs'
 
 const assets = '/tmp/pp-review-browser'
 const multilinePrediction = '这条建议很长，用于验证窄窗口时只占一行，不会挤进下面的工具栏，也不会覆盖 Tab 提示。\n把失败的用例修掉后再提交。\n最后说明验证结果。'
@@ -17,7 +17,7 @@ body{margin:0;background:#141414;color:#eee;font:18px Arial,sans-serif;padding:4
 .grow{position:relative;min-height:64px} [contenteditable]{outline:none;line-height:28px;min-height:56px}
 p{margin:0} [data-composer-placeholder]{position:absolute;top:0;left:0;color:#777;pointer-events:none;line-height:28px}
 .tools{margin-top:24px;display:flex;justify-content:space-between;color:#bbb}button{background:transparent;color:inherit;border:0;font:inherit}
-</style><style data-plugin-css="dsh-prompt-prediction/style">/* existing stylesheet from an older client */</style><div data-composer-card><div id="overlay"></div><div class="grow"><div data-composer-input contenteditable="true" data-phase="plain" data-placeholder="发消息或创建任务 / 调用指令，@ 文件或其它"><p><br></p></div><div data-composer-placeholder aria-hidden="true">发消息或创建任务 / 调用指令，@ 文件或其它</div></div><div class="tools"><button id="toolbar">＋　完全权限</button><span>GPT-6.1-Sol</span></div></div>
+</style><style data-plugin-css="dsh-prompt-prediction/style">/* existing stylesheet from an older client */</style><div id="stage"><div data-composer-card><div id="overlay"></div><div class="grow"><div data-composer-input contenteditable="true" data-phase="plain" data-placeholder="发消息或创建任务 / 调用指令，@ 文件或其它"><p><br></p></div><div data-composer-placeholder aria-hidden="true">发消息或创建任务 / 调用指令，@ 文件或其它</div></div><div class="tools"><button id="toolbar">＋　完全权限</button><span>GPT-6.1-Sol</span></div></div></div>
 <script src="/react.js"></script><script src="/react-dom.js"></script><script>
 window.feedback=[];window.inserts=[];window.predictionText=${JSON.stringify(multilinePrediction)};
 let plugin;window.__ModuleLoader__={load:r=>{plugin=r.factory(n=>{if(n==='react')return React;throw Error(n)})}};
@@ -40,6 +40,7 @@ window.render=()=>ReactDOM.flushSync(()=>root.render(React.createElement(Compone
 window.setSession=id=>{sessionId=id;render()};window.unmount=()=>ReactDOM.flushSync(()=>root.unmount());render();
 </script></html>`
 const integrated = process.argv.includes('--integrated')
+const nativeLayout = process.argv.includes('--native-layout') ? realComposerLayout() : null
 let hostFixture
 if (integrated) {
   hostFixture = await createHostFixture({ suggestionText: multilinePrediction })
@@ -141,6 +142,23 @@ try {
   const out = new URL('../artifacts/review/', import.meta.url)
   await mkdir(out, { recursive: true })
   await writeFile(new URL('ghost-fixed.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+  const aligned = `(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]')?.getBoundingClientRect();const e=document.querySelector('[contenteditable]');const p=(e.firstElementChild??e).getBoundingClientRect();const r=e.getBoundingClientRect();return !!g&&Math.abs(g.left-p.left)<1&&Math.abs(g.top-p.top)<1&&g.right<=r.right+1})()`
+  await waitFor(aligned)
+  for (const style of [
+    'transform:translateZ(0)', 'filter:opacity(1)', 'contain:paint', 'will-change:transform',
+  ]) {
+    await evaluate(`document.querySelector('[data-composer-card]').style.cssText=${JSON.stringify(style)}`)
+    await waitFor(aligned)
+  }
+  await evaluate(`document.getElementById('stage').style.cssText='transform:translate(18px,80px) scale(.8,.9);transform-origin:top left'`)
+  await waitFor(aligned)
+  await writeFile(new URL('ghost-transformed.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+  await evaluate(`{const row=document.createElement('div');row.id='accessory';row.style.height='46px';document.querySelector('.grow').before(row)}`)
+  await waitFor(aligned)
+  await evaluate(`document.body.style.minHeight='1800px';scrollTo(0,90)`)
+  await waitFor(aligned)
+  await evaluate(`scrollTo(0,0);document.body.style.minHeight='';document.getElementById('accessory').remove();document.getElementById('stage').style.cssText='';document.querySelector('[data-composer-card]').style.cssText=''`)
+  await waitFor(aligned)
   await command('Emulation.setDeviceMetricsOverride', { width: 420, height: 370, deviceScaleFactor: 1, mobile: false })
   await new Promise(resolve => setTimeout(resolve, 100))
   assert.equal(await evaluate(`(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]');const b=g.getBoundingClientRect();const t=document.querySelector('.tools').getBoundingClientRect();const hint=g.lastElementChild.getBoundingClientRect();return b.height<=parseFloat(getComputedStyle(g).lineHeight)+1&&b.bottom<=t.top&&b.right<=innerWidth&&hint.right<=b.right+1})()`), true)
@@ -265,6 +283,54 @@ try {
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-composer-placeholder]')).visibility`), 'visible')
   await evaluate(`document.querySelector('[contenteditable]').removeAttribute('aria-disabled')`)
   await waitFor(`!!document.querySelector('[data-dsh-prediction="ghost"]')`)
+  if (nativeLayout) {
+    await command('Emulation.setDeviceMetricsOverride', { width: 1100, height: 480, deviceScaleFactor: 1, mobile: false })
+    await evaluate(`(()=>{
+      const layout=${JSON.stringify(nativeLayout)};
+      const c=layout.ConversationRoot.classes,i=layout.InputBar.classes;
+      document.querySelector('style').sheet.disabled=true;
+      const style=document.createElement('style');
+      style.textContent='body{margin:0;padding:12px;background:#141414;color:#eee;font:14px Arial;--dsw-alias-bg-base:#141414;--dsw-specific-input-major:#2a2a2a;--dsw-font-family:Arial;--dsw-radius-panel:24px;--dsh-composer-card-max-width:980px;--dsh-composer-side-clearance:8px}'+layout.ConversationRoot.css+layout.InputBar.css;
+      document.head.append(style);
+      const root=document.getElementById('stage');root.className=c.root;root.dataset.phase='active';root.style.height='400px';
+      const body=document.createElement('div');body.className=c.scrollBody;body.id='native-scroll';
+      const history=document.createElement('div');history.className=c.viewArea;history.id='native-history';history.style.minHeight='900px';history.textContent='DSH 0.2.2 active conversation layout';
+      const seat=document.createElement('div');seat.className=c.composerSeat;seat.id='native-seat';
+      const bar=document.createElement('div');bar.className=i.root;bar.id='native-bar';
+      const card=document.querySelector('[data-composer-card]');card.className=i.card;
+      document.getElementById('overlay').className=i.overlayAnchor;
+      const grow=document.querySelector('.grow');grow.className=i.grow;
+      const scroll=document.createElement('div');scroll.className=i.scroll;grow.replaceWith(scroll);scroll.append(grow);
+      document.querySelector('[contenteditable]').className=i.input;
+      document.querySelector('[data-composer-placeholder]').className=i.placeholder;
+      document.querySelector('.tools').className=i.row;
+      bar.append(card);seat.append(bar);body.append(history,seat);root.append(body);
+      window.nativeInputClasses=i;
+    })()`)
+    assert.equal(await evaluate(`getComputedStyle(document.getElementById('native-seat')).willChange`), 'transform', 'official active-session CSS establishes the fixed containing block')
+    assert.equal(await evaluate(`getComputedStyle(document.getElementById('native-seat')).position`), 'sticky')
+    const nativeAligned = `(()=>{const g=document.querySelector('[data-dsh-prediction="ghost"]')?.getBoundingClientRect();const p=document.querySelector('[data-composer-placeholder]').getBoundingClientRect();return !!g&&Math.abs(g.left-p.left)<1&&Math.abs(g.top-p.top)<1&&g.top>=0&&g.bottom<=innerHeight})()`
+    await waitFor(nativeAligned)
+    await writeFile(new URL('ghost-native-active.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+    for (const top of [120, 600, 0]) {
+      await evaluate(`document.getElementById('native-scroll').scrollTop=${top}`)
+      if (top > 0) assert.ok(await evaluate(`document.getElementById('native-scroll').scrollTop>0`), 'native scroll container must actually scroll')
+      await waitFor(nativeAligned)
+    }
+    await evaluate(`document.getElementById('stage').dataset.phase='hero';document.getElementById('native-history').style.display='none';document.getElementById('native-bar').classList.add(nativeInputClasses.hero)`)
+    await waitFor(nativeAligned)
+    await evaluate(`document.getElementById('stage').dataset.phase='active';document.getElementById('native-history').style.display='';document.getElementById('native-bar').classList.remove(nativeInputClasses.hero)`)
+    await command('Emulation.setDeviceMetricsOverride', { width: 420, height: 480, deviceScaleFactor: 1, mobile: false })
+    await waitFor(nativeAligned)
+    await writeFile(new URL('ghost-native-narrow.png', out), Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+    const before = await evaluate('({inserts:inserts.length,sent:window.sent?.length})')
+    await evaluate(`document.querySelector('[contenteditable]').focus()`)
+    await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    await waitFor(`inserts.length===${before.inserts + 1}`)
+    assert.equal(await evaluate('inserts.at(-1)'), multilinePrediction)
+    assert.equal(await evaluate('window.sent?.length'), before.sent, 'native-layout acceptance leaves an unsent draft')
+    console.log('PASS: installed DSH composer CSS, active sticky containing block, scroll, hero transition, narrow viewport and Tab acceptance')
+  }
   await evaluate('unmount()')
   assert.equal(await evaluate(`document.querySelector('[data-composer-card]').hasAttribute('data-dsh-pp-active')`), false)
   console.log((integrated ? 'INTEGRATED real DSH HTTP + adapter boundary + Lexical + input actions + multiline undo/redo: ' : '') + 'PASS: real Chromium/React DOM stylesheet update, placeholder, narrow layout, replacement, IME, session isolation, multiline first-line preview and full Tab/ArrowRight draft insertion, whitespace, disabled state and cleanup')

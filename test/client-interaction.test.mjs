@@ -298,6 +298,8 @@ async function mountOverlay({
   sessionState = { running: false, openState: 'open' },
   planState = undefined,
   describedBy = null,
+  anchorRect = null,
+  inputPhase = 'plain',
 } = {}) {
   const source = readFileSync(clientPath, 'utf8')
   const head = createElement('head')
@@ -446,7 +448,7 @@ async function mountOverlay({
       return true
     },
   }
-  const useInput = (selector) => selector({ draft, attachmentIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [] })
+  const useInput = (selector) => selector({ draft, attachmentIds: [], draftRev: 0, phase: inputPhase, occurrences: [], queue: [] })
 
   let mounted = null
 
@@ -456,6 +458,7 @@ async function mountOverlay({
     const inner = runtime.render(outer.element.type, outer.element.props)
     if (mounted === null) {
       mounted = createElement('div')
+      if (anchorRect !== null) mounted.rect = anchorRect
       anchor.appendChild(mounted)
       if (inner.element.props.ref !== null && typeof inner.element.props.ref === 'object') {
         inner.element.props.ref.current = mounted
@@ -611,6 +614,18 @@ test('the ghost falls back to padding math when no line box exists', async () =>
   assert.equal(shown.box.width, 686 - 24)
 })
 
+test('the ghost uses local coordinates inside a translated and scaled composer', async () => {
+  const harness = await mountOverlay({
+    firstLine: { left: 460, top: 690, width: 640, right: 1100 },
+    anchorRect: { left: 420, top: 650, width: 0.8, height: 0.5 },
+  })
+  const ghost = harness.repaint().props.children[0]
+  assert.equal(ghost.props.style.position, 'absolute')
+  assert.equal(ghost.props.style.left, '50px')
+  assert.equal(ghost.props.style.top, '80px')
+  assert.equal(Number.parseFloat(ghost.props.style.width), (1121 - 12 * 0.8 - 460) / 0.8)
+})
+
 test('a prediction is reported once, not once per poll', async () => {
   const harness = await mountOverlay()
   // Extra paint cycles emulate the 700 ms poll returning the same revision.
@@ -721,6 +736,14 @@ test('a non-empty draft keeps the ghost hidden and Tab alone', async () => {
   assert.equal(event.prevented, false)
   assert.equal(harness.feedback.filter((item) => item.action === 'shown').length, 0)
   assert.ok(harness.feedback.some((item) => item.action === 'mounted'), 'the overlay still announces itself')
+})
+
+test('the DSH sending phase keeps an empty draft locked against prediction acceptance', async () => {
+  const harness = await mountOverlay({ inputPhase: 'sending' })
+  assert.equal(harness.repaint().props.children[0], null)
+  const event = harness.pressTab()
+  assert.equal(event.prevented, false)
+  assert.equal(harness.insertions.length, 0)
 })
 
 test('an inactive composer explains itself instead of staying silent', async () => {

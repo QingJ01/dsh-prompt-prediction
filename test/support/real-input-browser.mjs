@@ -3,6 +3,22 @@
 import { readFileSync } from 'node:fs'
 import { extractedRoot } from './dsh-runtime.mjs'
 
+export function realComposerLayout() {
+  const source = readFileSync(`${extractedRoot}/dsh-client-ui-conversation/lib/client.js`, 'utf8')
+  const modules = {}
+  for (const name of ['ConversationRoot', 'InputBar']) {
+    const marker = `@deepseek-ai/dsh-client-ui-conversation/${name}.module.css`
+    const markerIndex = source.indexOf(`"${marker}"`)
+    if (markerIndex < 0) throw Error(`DSH layout module not found: ${name}`)
+    const before = source.slice(0, markerIndex)
+    const css = [...before.matchAll(/const css(?:\$\d+)? = ("(?:\\.|[^"\\])*");/gu)].at(-1)
+    const classes = source.match(new RegExp(`var ${name}_module_css_default = (\\{[\\s\\S]*?\\n\\t\\t\\});`, 'u'))
+    if (!before || !css || !classes) throw Error(`DSH layout module not found: ${name}`)
+    modules[name] = { css: JSON.parse(css[1]), classes: JSON.parse(classes[1]) }
+  }
+  return modules
+}
+
 export function realInputBundle() {
   const source = readFileSync(`${extractedRoot}/dsh-client-ui-conversation/lib/client.js`, 'utf8')
   const end = source.indexOf('//#region lib/types/client/input/submission-analytics.js')
@@ -11,7 +27,13 @@ export function realInputBundle() {
   const keymapEnd = source.indexOf('//#endregion', keymapStart)
   const composingStart = source.indexOf('function isComposingEvent(')
   const composingEnd = source.indexOf('\n\t\t}', composingStart) + 5
-  return source.slice(0, end) + '\n' + source.slice(composingStart, composingEnd) + '\n' + source.slice(keymapStart, keymapEnd) + `
+  const platformStart = source.indexOf('function isApplePlatform(')
+  const platformEnd = source.indexOf('\n\t\t}', platformStart) + 5
+  if (composingStart < 0 || composingEnd <= composingStart || keymapStart < 0 || keymapEnd < 0 || platformStart >= 0 && platformEnd <= platformStart) {
+    throw Error('DSH composer keymap helpers not found')
+  }
+  const platformHelper = platformStart < 0 ? '' : `\n${source.slice(platformStart, platformEnd)}`
+  return source.slice(0, end) + '\n' + source.slice(composingStart, composingEnd) + platformHelper + '\n' + source.slice(keymapStart, keymapEnd) + `
   exports.ReviewInputShell = SessionInputShell;
   exports.ReviewKeymap = registerComposerKeymap;
   exports.ReviewUndo = Qe$2;

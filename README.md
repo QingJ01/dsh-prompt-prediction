@@ -9,7 +9,7 @@ DeepSeek Harness（DSH）的非官方插件：Agent 正常完成一轮回复后�
 | 项目 | 说明 |
 | --- | --- |
 | 运行环境 | DSH 插件，不是独立聊天应用或浏览器扩展 |
-| 声明兼容范围 | DSH `>=0.2.1-rc.5 <0.3.0`；适配基于 `0.2.1-rc.5`，不表示范围内每个版本都已实测 |
+| 声明兼容范围 | DSH `>=0.2.1-rc.5 <0.3.0`；接口回归覆盖 `0.2.1-rc.5` 与 `0.2.2-rc.1`，不等于完整 Desktop 验收 |
 | Node.js | `>=24.0.0`；本地开发和测试需要 |
 | 构建与依赖 | 无构建步骤；DSH 提供 Cordis、Schemastery、React 等宿主能力 |
 | 模型费用 | 预测会额外请求模型，可能计费 |
@@ -218,11 +218,13 @@ DSH_EXTRACTED_ROOT=/path/to/extracted-dsh npm test
 
 浏览器回归依赖与命令见 [Browser regression checks](README.en.md#browser-regression-checks)。该脚本使用 macOS 标准 Chrome 路径；浏览器夹具、真实 HTTP/Lexical 集成、Desktop IPC 和模型提供商实测是不同验证层级，不能相互替代。仓库不分发 DSH 源码或提取的资源。
 
+针对 `0.2.2-rc.1`，追加 `--native-layout` 会直接读取安装包的输入框和会话布局 CSS，验证活动会话的粘底容器、滚动、欢迎页切换和窄屏定位。新版活动容器的 `will-change: transform` 会改变固定定位参照，因此灰字使用输入框内的局部绝对定位。检查 DSH 更新时也需查看官方候选版或 npm 的 `next` 标签，不能只看 `latest`。
+
 <a id="compatibility-limits"></a>
 
 ## 兼容性边界
 
-- 依赖 DSH `0.2.1-rc.5` 的部分内部接口，后续版本可能改变。
+- 依赖 DSH 的部分内部接口；目前回归覆盖 `0.2.1-rc.5` 与 `0.2.2-rc.1`，后续版本仍可能改变。
 - 预测仅是普通文本，不渲染文件引用芯片。
 - 超时阻止插件接收迟到结果；提供商若忽略取消，底层请求可能仍继续。
 - 完整 Desktop IPC、所有外部模型提供商和各类屏幕阅读器尚未完成端到端验证。
